@@ -1,0 +1,58 @@
+// Firestore Security Rules — แทนที่ใน Firebase Console → Firestore → Rules
+// เป้าหมาย: ใครก็อ่านได้ (เว็บ public) แต่เขียน/ลบได้เฉพาะคนที่ login เป็น admin
+//
+// 🔒 ใช้คู่กับ Firebase Authentication (Email/Password) ที่สร้างใน Authentication → Users
+// อนาคต ถ้าต้องการแยกสิทธิ์ละเอียดขึ้น ให้ใช้ Custom Claims (admin=true)
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ✅ public read สำหรับประกาศ (จำเป็น เพราะเว็บโชว์ใครก็เห็นได้)
+    // ✅ write/update/delete เฉพาะผู้ที่ล็อกอินแล้วเท่านั้น
+    match /listings/{id} {
+      allow read: if true;
+
+      // จำกัดขนาด/ฟิลด์ที่ผู้ใช้สามารถยัดเข้ามา (กันสแปม / กันยัด blob ใหญ่)
+      allow create: if isAdmin()
+                    && validListing(request.resource.data);
+      // admin แก้ได้ทุกอย่าง | คนทั่วไปเพิ่มยอดดู (views +1) ได้อย่างเดียว เปลี่ยน field อื่นไม่ได้
+      allow update: if (isAdmin() && validListing(request.resource.data))
+                    || isViewIncrement();
+      allow delete: if isAdmin();
+    }
+
+    // เมตาดาต้าทั่วเว็บ (รายชื่อประเภท, การตั้งค่าทั่วเว็บ)
+    match /meta/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // กันทุก path อื่นโดย default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// ─────── helpers ───────
+function isAdmin() {
+  // ขั้นต้น: ใครก็ตามที่ Authenticated = admin
+  // ถ้าอยากแยกสิทธิ์ ให้ตั้ง custom claim แล้วเปลี่ยนเป็น:
+  //   return request.auth != null && request.auth.token.admin == true;
+  return request.auth != null;
+}
+
+function validListing(d) {
+  return d.title is string && d.title.size() <= 200
+      && (!('desc' in d) || d.desc is string && d.desc.size() <= 5000)
+      && (!('fbUrl' in d) || d.fbUrl is string && d.fbUrl.size() <= 500)
+      && (!('imageObjs' in d) || d.imageObjs is list && d.imageObjs.size() <= 30);
+}
+
+// อนุญาตให้ "ใครก็ได้" เพิ่ม views ทีละ 1 เท่านั้น (เปลี่ยน field อื่นไม่ได้) — สำหรับตัวนับยอดดู
+function isViewIncrement() {
+  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+      && request.resource.data.views is int
+      && request.resource.data.views == (('views' in resource.data) ? resource.data.views : 0) + 1;
+}
