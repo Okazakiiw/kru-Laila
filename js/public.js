@@ -11,15 +11,16 @@ import { parseRoute, navigateTo } from './router.js';
 import { setMeta } from './seo.js';
 import { hasOpenLayer } from './ui/overlay.js';
 
-import * as home from './pages/home.js';
-import * as explore from './pages/explore.js';
-import * as listing from './pages/listing.js';
-import * as favorites from './pages/favorites.js';
-import * as calculator from './pages/calculator.js';
-import * as contact from './pages/contact.js';
-import * as notfound from './pages/notfound.js';
-
-const PAGES = { home, explore, listing, favorites, calculator, contact, notfound };
+/* โหลดหน้าเฉพาะเมื่อเปิด (dynamic import — ไม่มี bundler) → หน้าแรกโหลด JS น้อยลง */
+const PAGES = {
+  home:       () => import('./pages/home.js'),
+  explore:    () => import('./pages/explore.js'),
+  listing:    () => import('./pages/listing.js'),
+  favorites:  () => import('./pages/favorites.js'),
+  calculator: () => import('./pages/calculator.js'),
+  contact:    () => import('./pages/contact.js'),
+  notfound:   () => import('./pages/notfound.js')
+};
 
 mountIcons();
 const view = byId('main');
@@ -27,14 +28,19 @@ const y = byId('year'); if (y) y.textContent = new Date().getFullYear();
 
 /* ── Router ── */
 let current = null;   // { name, id, inst }
-function render(){
+let navSeq = 0;
+async function render(){
   const r = parseRoute();
   if (current && current.name === r.name && current.id === r.id) return;
+  const seq = ++navSeq;
+  let page;
+  try { page = await (PAGES[r.name] || PAGES.notfound)(); }
+  catch (e){ console.error(e); toast('โหลดหน้าไม่สำเร็จ — ลองรีเฟรช', 'error'); return; }
+  if (seq !== navSeq) return;   // ผู้ใช้กดไปหน้าอื่นระหว่างโหลด
   const swap = () => {
     if (current && current.inst && current.inst.destroy) { try { current.inst.destroy(); } catch(e){ console.error(e); } }
     view.textContent = '';
     document.body.className = 'page-' + r.name;
-    const page = PAGES[r.name] || notfound;
     const inst = page.mount(view, { id: r.id }) || {};
     current = { name: r.name, id: r.id, inst };
     if (!inst.ownsMeta) setMeta(inst.meta || {});

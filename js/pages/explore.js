@@ -12,7 +12,7 @@ import { store, setFilters, resetFilters, activeFilterCount } from '../store.js'
 import { icon } from '../ui/icons.js';
 import { statusEl, priceEl, imgEl, listingHref, emptyState } from '../ui/components.js';
 import { openLayer } from '../ui/overlay.js';
-import { hasLeaflet, monoTiles, newMap, pricePinIcon, clusterGroup, approxCircle, approxStyle, TH_CENTER } from '../ui/map.js';
+import { ensureLeaflet, monoTiles, newMap, pricePinIcon, clusterGroup, approxCircle, approxStyle, TH_CENTER } from '../ui/map.js';
 
 const SORTS = { new:'ใหม่สุด', priceAsc:'ราคาต่ำ → สูง', priceDesc:'ราคาสูง → ต่ำ' };
 const PRICE_PRESETS = [ ['', '1000000', 'ไม่เกิน 1 ล้าน'], ['1000000', '3000000', '1–3 ล้าน'], ['3000000', '', '3 ล้านขึ้นไป'], ['', '10000', 'เช่า ≤ ฿10,000'] ];
@@ -37,14 +37,17 @@ export function mount(root){
   let map = null, cluster = null, circles = null;
   const markers = new Map();   // id → { layer, kind:'pin'|'circle', it }
   let selectedId = null, firstFit = true, fitNext = true;
-  if (hasLeaflet()){
+  let destroyed = false;
+  ensureLeaflet().then(() => {
+    if (destroyed) return;
     map = newMap(mapEl, { layers:[ monoTiles() ] }).setView(TH_CENTER, 6);
     cluster = clusterGroup(); map.addLayer(cluster);
     circles = L.layerGroup().addTo(map);
     requestAnimationFrame(() => map.invalidateSize());
-  } else {
+    render();
+  }).catch(() => {
     mapEl.appendChild(create('div', { class:'empty', style:{ height:'100%' } }, [ create('p', { class:'label', text:'โหลดแผนที่ไม่สำเร็จ — ลองรีเฟรชหน้า' }) ]));
-  }
+  });
 
   /* ── Filter chips + popovers ── */
   let openPop = null;
@@ -254,6 +257,6 @@ export function mount(root){
       else if (kind === 'data'){ if (firstFit) fitNext = true; render(); renderChips(); }
       else if (kind === 'settings') renderChips();
     },
-    destroy(){ closePop(); window.removeEventListener('resize', onResize); if (map) map.remove(); }
+    destroy(){ destroyed = true; closePop(); window.removeEventListener('resize', onResize); if (map) map.remove(); }
   };
 }

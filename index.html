@@ -78,20 +78,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://lh3.googleusercontent.com" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Prompt:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <!-- Leaflet + MarkerCluster -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" defer></script>
+  <!-- Leaflet + MarkerCluster: โหลดเมื่อเปิดหน้าที่มีแผนที่ (js/ui/map.js → ensureLeaflet) -->
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
 
   <!-- Styles -->
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- Firebase (Compat — ไม่ต้อง build) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <!-- Firebase (Compat — ไม่ต้อง build) · defer: ไม่บล็อกการแสดงผล และยังรันก่อน module ตามลำดับเอกสาร -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
 
   <!-- ⚠️ ใส่ค่า config ของโปรเจกต์ Firebase ของคุณ -->
   <script>
@@ -139,7 +138,8 @@
       </div>
     </header>
 
-    <main id="main" tabindex="-1"></main>
+    <main id="main" tabindex="-1"><section class="hero" data-prerender><div><h1>บ้าน ที่ดิน<br><span>คอนโด</span></h1><p class="hero-p">รวมประกาศบ้าน ที่ดิน คอนโด พร้อมรูปจริงและตำแหน่งบนแผนที่ ติดต่อครูไลลาได้โดยตรง ไม่ผ่านนายหน้าซ้ำซ้อน</p></div><div class="seg" aria-hidden="true"><button type="button" aria-pressed="true" tabindex="-1">ทั้งหมด</button><button type="button" aria-pressed="false" tabindex="-1">ขาย</button><button type="button" aria-pressed="false" tabindex="-1">เช่า</button></div></section></main>
+    <script>/* hero วาดล่วงหน้าเฉพาะหน้าแรก (LCP เร็วขึ้น) — หน้าอื่นลบทิ้งก่อนแสดงผล */ var _h=location.hash; if(_h && _h!=='#' && _h!=='#/'){var _m=document.getElementById('main');_m&&(_m.innerHTML='');}</script>
 
     <footer class="card foot" id="foot">
       <div>

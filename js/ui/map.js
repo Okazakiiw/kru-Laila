@@ -6,6 +6,33 @@ import { escapeHTML } from '../core/dom.js';
 import { shortPrice } from '../core/format.js';
 
 export const hasLeaflet = () => typeof window.L !== 'undefined';
+
+/* โหลด Leaflet + MarkerCluster เฉพาะเมื่อหน้าที่มีแผนที่ถูกเปิด (หน้าแรกเร็วขึ้น) — แอดมินโหลดแบบ static อยู่แล้ว */
+const LEAFLET = [
+  ['css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'],
+  ['css', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css'],
+  ['js',  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'],
+  ['js',  'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js']
+];
+let leafletP = null;
+function loadAsset([kind, href]){
+  return new Promise((res, rej) => {
+    if (document.querySelector((kind === 'css' ? 'link[href="' : 'script[src="') + href + '"]')) return res();
+    const el = kind === 'css' ? Object.assign(document.createElement('link'), { rel:'stylesheet', href }) : Object.assign(document.createElement('script'), { src: href });
+    el.onload = res; el.onerror = rej;
+    document.head.appendChild(el);
+  });
+}
+export function ensureLeaflet(){
+  if (hasLeaflet() && (typeof L.markerClusterGroup === 'function' || !document.querySelector('[data-needs-cluster]'))) return Promise.resolve();
+  if (!leafletP){
+    leafletP = Promise.all(LEAFLET.filter(a => a[0] === 'css').map(loadAsset))
+      .then(() => hasLeaflet() ? null : loadAsset(LEAFLET[2]))
+      .then(() => typeof L.markerClusterGroup === 'function' ? null : loadAsset(LEAFLET[3]).catch(() => null))
+      .catch(e => { leafletP = null; throw e; });
+  }
+  return leafletP;
+}
 export const TH_CENTER = [13.736717, 100.523186];
 
 export function monoTiles(){

@@ -79,8 +79,8 @@ export function mount(root){
 
   /* ── renderers ── */
   function renderHero(){
-    heroP.textContent = (store.settings.aboutText || '').trim()
-      || 'รวมประกาศบ้าน ที่ดิน คอนโด พร้อมรูปจริงและตำแหน่งบนแผนที่ ติดต่อครูไลลาได้โดยตรง ไม่ผ่านนายหน้าซ้ำซ้อน';
+    // ข้อความคงที่ (ไม่รอ meta/site) — กันหน้ากระโดด (CLS); aboutText แสดงที่หน้า "ติดต่อ"
+    heroP.textContent = 'รวมประกาศบ้าน ที่ดิน คอนโด พร้อมรูปจริงและตำแหน่งบนแผนที่ ติดต่อครูไลลาได้โดยตรง ไม่ผ่านนายหน้าซ้ำซ้อน';
     seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === store.filters.mode)));
   }
 
@@ -158,7 +158,7 @@ export function mount(root){
     list.forEach((it, i) => {
       const a = create('a', { class:'feat' + (anim ? ' reveal' : ''), href: listingHref(it.id), 'aria-label': `${it.title || 'ประกาศ'} — ${priceParts(it).n} ${priceParts(it).u}` });
       if (anim) a.style.setProperty('--i', String(i));
-      a.appendChild(imgEl(getImageURLs(it)[0], { size: 1000, eager: i < 2 }));
+      a.appendChild(imgEl(getImageURLs(it)[0], { size: 720, eager: i === 0 }));
       a.appendChild(create('div', { class:'top' }, [
         chip(statusEl(it.status), 'on-img'),
         pinned ? chip([icon('pin','ic-sm'), 'แนะนำ'], 'dark') : chip([icon('eye','ic-sm'), String(+it.views || 0)], 'dark')
@@ -251,6 +251,7 @@ export function mount(root){
     update(kind){
       if (kind === 'favs') return;   // ปุ่มหัวใจอัปเดตตัวเองแล้ว
       if (kind === 'filters'){ renderHero(); renderKpis(false); renderFeatured(false); renderTypes(false); renderLatest(false); return; }
+      if (kind === 'settings'){ if (store.ready) renderTypes(false); return; }   // meta/types มาทีหลัง — วาดเฉพาะการ์ดประเภท
       renderAll();
     }
   };

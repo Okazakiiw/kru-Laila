@@ -788,3 +788,8 @@ input.sr-only:focus-visible + .dropzone{ outline:2px solid var(--ink); outline-o
 .dr-panel .inner .switch{ min-height:44px; }
 .leads-grid .lead .btn-white{ background:var(--inner); box-shadow:none; }
 .leads-grid .lead .btn-white:hover{ background:var(--inner-2); }
+
+/* กัน layout shift: footer แสดงหลัง router วาดหน้าแรกแล้ว · main จองความสูง */
+body:not([class*="page-"]) .foot{ display:none; }
+body:not(.admin) main{ min-height:calc(100vh - var(--top-h)); }
+.page-explore main{ min-height:0; }
