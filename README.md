@@ -124,10 +124,17 @@
 อัปโหลดทุกไฟล์ขึ้น hosting (Firebase Hosting / GitHub Pages / Netlify / Vercel)
 - `index.html`
 - `admin.html`
-- `app.js`
 - `styles.css`
+- โฟลเดอร์ `js/` ทั้งโฟลเดอร์ (ES modules — โหลดด้วย `<script type="module">`)
 
 ไม่ต้อง build ไม่ต้อง npm install ✨
+
+โครงสร้าง `js/` (v3):
+- `core/` — DOM + ความปลอดภัย (`escapeHTML`, `safeUrl`, `safePhoneTel`), การจัดรูปแบบราคา/วันที่
+- `data/` — Firebase, Firestore (listings, รายการโปรด, ยอดดู, ปักหมุด, leads), รูป/Apps Script, พิกัด
+- `ui/` — ไอคอน (Lucide sprite), การ์ด, lightbox, popover/drawer (Esc + focus trap), แผนที่, คำนวณค่างวด
+- `pages/` — หน้าเว็บตาม hash route: `#/` · `#/explore` · `#/listing/{id}` · `#/favorites` · `#/calculator` · `#/contact`
+- `admin/` — หน้าแอดมิน: `main.js` (login + เมนู), `views.js`, `editor.js` (drawer เพิ่ม/แก้ประกาศ), `ops.js` (คำสั่งเขียนข้อมูล)
 
 ### 5) (เลือกได้) เชื่อมต่อ Facebook เพื่อ "ดึงรูปจากโพสต์" อัตโนมัติ
 
