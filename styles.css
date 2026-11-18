@@ -601,3 +601,12 @@ select.input{ -webkit-appearance:none; appearance:none; padding-right:44px; curs
 .switch input:checked + .track-sw{ background:var(--ink); }
 .switch input:checked + .track-sw::after{ transform:translateX(20px); }
 .switch input:focus-visible + .track-sw{ outline:2px solid var(--ink); outline-offset:3px; }
+
+/* ---------- fixes (listing) ---------- */
+@media (min-width:768px){
+  .bento button.all{ background:var(--surface); color:var(--ink); padding:0 18px; min-height:44px; display:inline-flex; cursor:pointer; }
+  .bento button.all:hover{ background:#FAFAF8; }
+}
+/* ปุ่มรองบนการ์ดขาว → ใช้พื้นเทาอ่อนให้มองเห็น */
+.price-card .contact-grid .btn-white{ background:var(--inner); box-shadow:none; }
+.price-card .contact-grid .btn-white:hover{ background:var(--inner-2); }
