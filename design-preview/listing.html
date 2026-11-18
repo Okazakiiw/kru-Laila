@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Preview — หน้าประกาศ | ครูไลลาขายบ้านและที่ดิน</title>
+<meta name="theme-color" content="#F5F5F3" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="preview.css" />
+<style>
+  .tiles-mono{ filter:grayscale(1) brightness(1.06) contrast(.88); }
+  .leaflet-container{ font-family:var(--font); background:#EDEDEA; }
+  .pin-pill{ display:inline-flex; align-items:center; justify-content:center; height:34px; padding:0 14px; border-radius:999px; background:var(--ink); color:#fff; font:600 14px var(--font); white-space:nowrap; transform:translate(-50%,-50%); box-shadow:0 6px 16px -6px rgba(0,0,0,.4); }
+</style>
+<script src="icons.js"></script>
+<script src="data.js"></script>
+</head>
+<body class="page-listing">
+<a class="skip" href="#main">ข้ามไปเนื้อหา</a>
+<span class="pv-note">design preview · ข้อมูลตัวอย่าง</span>
+
+<aside class="rail" aria-label="เมนูหลัก">
+  <a href="home.html" class="rail-logo" aria-label="ครูไลลา หน้าแรก">ค</a>
+  <nav>
+    <a href="home.html" data-tip="หน้าแรก" aria-label="หน้าแรก"><svg class="ic"><use href="#i-house"/></svg></a>
+    <a href="#" data-tip="สำรวจแผนที่" aria-label="สำรวจแผนที่"><svg class="ic"><use href="#i-map"/></svg></a>
+    <a href="#" data-tip="รายการโปรด" aria-label="รายการโปรด 2 รายการ"><svg class="ic"><use href="#i-heart"/></svg><span class="nav-badge">2</span></a>
+    <a href="#" data-tip="คำนวณค่างวด" aria-label="คำนวณค่างวด"><svg class="ic"><use href="#i-calculator"/></svg></a>
+    <a href="#" data-tip="ติดต่อ" aria-label="ติดต่อ"><svg class="ic"><use href="#i-phone"/></svg></a>
+  </nav>
+</aside>
+
+<div class="shell">
+  <header class="topbar">
+    <a href="home.html" class="brand-sm" aria-label="ครูไลลา หน้าแรก">ค</a>
+    <div class="top-left">ครูไลลา · ขายบ้านและที่ดิน</div>
+    <label class="search"><svg class="ic"><use href="#i-search"/></svg><span class="sr-only">ค้นหา</span>
+      <input type="search" placeholder="ค้นหาชื่อประกาศ หรือทำเล…" /></label>
+    <div class="top-right">
+      <a class="btn line-btn" href="#"><svg class="ic"><use href="#i-message-circle"/></svg>ทัก LINE</a>
+      <a class="icon-btn" href="#" aria-label="โทร"><svg class="ic"><use href="#i-phone"/></svg></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <nav class="crumbs" aria-label="เส้นทาง">
+      <a class="icon-btn" href="home.html" aria-label="กลับ"><svg class="ic"><use href="#i-arrow-left"/></svg></a>
+      <a href="home.html">หน้าแรก</a><span>/</span><span>บ้าน</span>
+    </nav>
+
+    <div class="bento" id="bento"></div>
+
+    <div class="detail">
+      <div class="d-main">
+        <h1 class="d-title" id="title"></h1>
+        <div class="d-chips" id="chips"></div>
+        <div class="spec-tiles" id="specs"></div>
+        <div class="d-rest">
+
+        <section class="card" style="margin-top:20px">
+          <h2 style="font-size:20px;margin-bottom:12px">รายละเอียด</h2>
+          <p class="d-desc">บ้านเดี่ยวสไตล์โมเดิร์น หน้ากว้าง 10 เมตร ลึก 20 เมตร
+• 3 ห้องนอน 3 ห้องน้ำ ห้องนั่งเล่นโถงสูง
+• ครัวแยก ระบายอากาศดี
+• จอดรถได้ 2 คัน มีพื้นที่สวนหน้าบ้าน
+• ห่างตัวเมืองยะลา ~10 นาที ใกล้โรงเรียนและตลาด</p>
+          <div class="label" style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap"><span><svg class="ic ic-sm"><use href="#i-calendar"/></svg> โพสต์เมื่อ 12 พ.ย. 2569</span><span><svg class="ic ic-sm"><use href="#i-eye"/></svg> เข้าชม 48 ครั้ง</span></div>
+        </section>
+
+        <section class="card" style="margin-top:20px">
+          <div class="sec-head" style="margin-bottom:12px"><h2 style="font-size:20px">ทำเล</h2><a class="btn btn-soft" href="#"><svg class="ic"><use href="#i-arrow-up-right"/></svg>Google Maps</a></div>
+          <div class="mini-map" id="mini"></div>
+        </section>
+        </div>
+      </div>
+
+      <aside class="card price-card" aria-label="ราคาและการติดต่อ">
+        <div>
+          <div class="label">ราคาขาย</div>
+          <div class="price" id="price"></div>
+          <div class="label" style="margin-top:6px">≈ 44,000 บาท/ตร.วา</div>
+        </div>
+        <div style="display:grid;gap:8px">
+          <a class="btn btn-lg btn-block" href="#"><svg class="ic"><use href="#i-phone"/></svg>โทร 081-234-5678</a>
+          <div class="contact-grid">
+            <a class="btn btn-soft" href="#"><svg class="ic"><use href="#i-message-circle"/></svg>LINE</a>
+            <a class="btn btn-soft" href="#"><svg class="ic"><use href="#i-send"/></svg>Messenger</a>
+            <a class="btn btn-soft" href="#"><svg class="ic"><use href="#i-facebook"/></svg>FB</a>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-soft"><svg class="ic"><use href="#i-link"/></svg>คัดลอกลิงก์</button>
+            <button class="icon-btn soft" aria-label="แชร์"><svg class="ic"><use href="#i-share"/></svg></button>
+            <button class="icon-btn soft" aria-pressed="true" aria-label="บันทึกรายการโปรด"><svg class="ic"><use href="#i-heart"/></svg></button>
+          </div>
+        </div>
+        <div class="inner loan" aria-labelledby="loanH">
+          <div style="display:flex;justify-content:space-between;align-items:center"><b id="loanH">ค่างวดโดยประมาณ</b><svg class="ic"><use href="#i-calculator"/></svg></div>
+          <div class="out"><div class="price"><span id="mo">0</span><span class="u">บาท/ด.</span></div></div>
+          <div class="range-field"><div class="top"><label for="dn">เงินดาวน์</label><b id="dnV"></b></div><input id="dn" type="range" min="0" max="50" step="5" value="10"></div>
+          <div class="range-field"><div class="top"><label for="rt">ดอกเบี้ย/ปี</label><b id="rtV"></b></div><input id="rt" type="range" min="2" max="9" step="0.25" value="6.5"></div>
+          <div class="range-field"><div class="top"><label for="yr">ระยะเวลา</label><b id="yrV"></b></div><input id="yr" type="range" min="5" max="40" step="1" value="30"></div>
+          <div class="label" id="loanSub" style="font-size:13px"></div>
+        </div>
+        <details class="inner"><summary style="cursor:pointer;font-weight:500">ฝากข้อมูลให้ติดต่อกลับ</summary><div class="label" style="margin-top:8px">ฟอร์มชื่อ/เบอร์/ข้อความ + ยินยอม PDPA (ฟีเจอร์เดิม)</div></details>
+      </aside>
+    </div>
+
+    <section class="sec" aria-labelledby="nearH">
+      <div class="sec-head"><div><h2 id="nearH">ประกาศใกล้เคียง</h2><div class="label">ประเภทเดียวกัน หรืออยู่ใกล้กัน</div></div></div>
+      <div class="grid-cards" id="near"></div>
+    </section>
+  </main>
+</div>
+
+<nav class="bbar" aria-label="เมนูหลัก">
+  <a href="home.html"><svg class="ic"><use href="#i-house"/></svg>หน้าแรก</a>
+  <a href="#"><svg class="ic"><use href="#i-map"/></svg>แผนที่</a>
+  <a href="#"><svg class="ic"><use href="#i-heart"/></svg>โปรด<span class="nav-badge">2</span></a>
+  <a href="#"><svg class="ic"><use href="#i-calculator"/></svg>ค่างวด</a>
+  <a href="#"><svg class="ic"><use href="#i-phone"/></svg>ติดต่อ</a>
+</nav>
+<div class="sticky-contact" role="region" aria-label="ติดต่อ">
+  <button class="icon-btn soft" aria-pressed="true" aria-label="บันทึกรายการโปรด"><svg class="ic"><use href="#i-heart"/></svg></button>
+  <a class="btn btn-soft" href="#"><svg class="ic"><use href="#i-message-circle"/></svg>LINE</a>
+  <a class="btn" href="#"><svg class="ic"><use href="#i-phone"/></svg>โทรเลย</a>
+</div>
+
+<script>
+const it = ITEMS[0];
+const im = it.imgs;
+document.getElementById('bento').innerHTML =
+  `<button class="b0" aria-label="ดูรูปที่ 1"><img src="${im[0]}" alt=""><span class="chip on-img all m-only">${ic('images','ic-sm')} 1 / ${im.length}</span></button>` +
+  im.slice(1,5).map((u,i)=>`<button class="bx" aria-label="ดูรูปที่ ${i+2}"><img src="${u}" alt="" loading="lazy">${i===3?`<span class="btn btn-white all">${ic('images')}ดูทั้งหมด ${im.length} รูป</span>`:''}</button>`).join('');
+document.getElementById('title').textContent = it.title;
+document.getElementById('chips').innerHTML = `<span class="chip">${statusHTML(it.status)}</span><span class="chip">${ic('house','ic-sm')} ${it.type}</span><span class="chip">ขาย</span><span class="chip dark">${ic('pin','ic-sm')} แนะนำ</span>`;
+const tiles = [['bed',it.bedrooms,'ห้องนอน'],['bath',it.bathrooms,'ห้องน้ำ'],['maximize',it.usableArea,'ตร.ม. ใช้สอย'],['land-plot',it.landSize,'ตร.วา ที่ดิน']];
+document.getElementById('specs').innerHTML = tiles.map(([i,v,l])=>`<div class="inner">${ic(i)}<div><div class="v">${v}</div><div class="label">${l}</div></div></div>`).join('');
+document.getElementById('price').innerHTML = priceHTML(it);
+document.getElementById('near').innerHTML = [ITEMS[2], ITEMS[7], ITEMS[5], ITEMS[8]].map(cardHTML).join('');
+
+// loan (live)
+const $ = (id) => document.getElementById(id);
+function calc(){
+  const d=+$('dn').value, r=+$('rt').value, y=+$('yr').value;
+  [['dn',0,50],['rt',2,9],['yr',5,40]].forEach(([k,a,b]) => $(k).style.setProperty('--p', ((+$(k).value-a)/(b-a)*100)+'%'));
+  $('dnV').textContent = d+'%'; $('rtV').textContent = r+'%'; $('yrV').textContent = y+' ปี';
+  const loan = it.price*(1-d/100), m = r/1200, n = y*12;
+  const pay = m ? loan*m/(1-Math.pow(1+m,-n)) : loan/n;
+  $('mo').textContent = Math.round(pay).toLocaleString('th-TH');
+  $('loanSub').textContent = `วงเงินกู้ ${Math.round(loan).toLocaleString('th-TH')} · ดอกเบี้ยรวม ~${Math.round(pay*n-loan).toLocaleString('th-TH')} บาท`;
+}
+['dn','rt','yr'].forEach(k => $(k).addEventListener('input', calc)); calc();
+
+// mini map (OSM + mono filter, pill marker)
+const map = L.map('mini', { zoomControl:false, attributionControl:true, scrollWheelZoom:false }).setView([6.5405, 101.2806], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, className:'tiles-mono', attribution:'© OpenStreetMap' }).addTo(map);
+L.marker([6.5405,101.2806], { icon:L.divIcon({ className:'', html:'<span class="pin-pill">2.2M</span>', iconSize:[0,0] }) }).addTo(map);
+</script>
+</body>
+</html>
