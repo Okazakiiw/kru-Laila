@@ -39,9 +39,10 @@ export function openLayer(el, opts = {}){
     try { f.focus({ preventScroll: true }); } catch {}
   });
 
-  function close(){
+  function close(force){
     const i = stack.indexOf(layer);
     if (i < 0) return;
+    if (force !== true && opts.beforeClose && opts.beforeClose() === false) return;
     stack.splice(i, 1);
     document.removeEventListener('pointerdown', onDown, true);
     if (opts.lockScroll && !stack.some(l => l.lock)) document.documentElement.classList.remove('no-scroll');
