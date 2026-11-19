@@ -210,7 +210,7 @@ export function mount(root){
   /* ── Bottom sheet (mobile) ── */
   const mq = window.matchMedia('(min-width:1024px)');
   let sheetSnap = 1;   // 0 peek · 1 half · 2 full
-  const snaps = () => { const h = wrap.clientHeight; return [132, Math.round(h * .58), Math.round(h * .88)]; };
+  const snaps = () => { const h = wrap.clientHeight; return [216, Math.round(h * .45), Math.round(h * .88)]; };
   function setSheet(i, px){
     sheetSnap = i;
     wrap.style.setProperty('--sheet-h', (px != null ? px : snaps()[i]) + 'px');
