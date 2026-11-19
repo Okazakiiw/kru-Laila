@@ -8,10 +8,10 @@ export const hasLeaflet = () => typeof window.L !== 'undefined';
 
 /* โหลด Leaflet + MarkerCluster เฉพาะเมื่อหน้าที่มีแผนที่ถูกเปิด (หน้าแรกเร็วขึ้น) — แอดมินโหลดแบบ static อยู่แล้ว */
 const LEAFLET = [
-  ['css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'],
-  ['css', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css'],
-  ['js',  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'],
-  ['js',  'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js']
+  ['css', '/vendor/leaflet/leaflet.css'],
+  ['css', '/vendor/markercluster/MarkerCluster.css'],
+  ['js',  '/vendor/leaflet/leaflet.js'],
+  ['js',  '/vendor/markercluster/leaflet.markercluster.js']
 ];
 let leafletP = null;
 function loadAsset([kind, href]){
