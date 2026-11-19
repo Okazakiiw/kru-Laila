@@ -5,7 +5,7 @@
 import { byId, $$, create, safeUrl, safePhoneTel, toast, debounce, withTransition } from './core/dom.js';
 import { mountIcons, icon } from './ui/icons.js';
 import { db, loadSiteSettings, loadTypes } from './data/firebase.js';
-import { subscribeListings, getFavs } from './data/listings.js';
+import { subscribeListings, getFavs, isHiddenSoldLand } from './data/listings.js';
 import { store, emit, onChange, setFilters } from './store.js';
 import { parseRoute, navigateTo } from './router.js';
 import { setMeta } from './seo.js';
@@ -125,7 +125,7 @@ if (!db){
      - ครั้งแรก: render หน้า (เปิด deep link)
      - ครั้งถัดไป (เช่น มีคนอื่นกดดู → views +1): หน้าอัปเดตเงียบ ๆ (หน้าประกาศไม่วาดแกลเลอรี/ฟอร์มใหม่) */
   subscribeListings(items => {
-    store.items = items;
+    store.items = items.filter(it => !isHiddenSoldLand(it));
     store.ready = true;
     store.error = null;
     emit('data');

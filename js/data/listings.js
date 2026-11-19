@@ -134,3 +134,6 @@ export async function submitLead(it, { name, phone, message, honeypot, consent }
   try { localStorage.setItem(LKEY, String(Date.now())); } catch {}
   return { ok:true };
 }
+
+/** ที่ดินที่ขายแล้ว → ซ่อนจากลูกค้าทั้งเว็บสาธารณะ (หน้าแรก/แผนที่/รายการโปรด/ลิงก์ตรง) · แอดมินยังเห็นตามปกติ */
+export const isHiddenSoldLand = (it) => (it.status === 'sold') && /ที่ดิน/.test(it.type || '');
