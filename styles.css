@@ -826,7 +826,7 @@ body:not(.admin) main{ min-height:calc(100vh - var(--top-h)); }
 /* ===== v3.2 — หมุดรูปปก + สีตามชนิด (ที่ดิน/บ้าน/บ้านเช่า) ===== */
 .thumb-marker{ position:absolute; width:52px; height:52px; transform:translate(-50%,-50%); border-radius:50%; border:3px solid var(--kc,#121212); background:#fff;
   box-shadow:0 6px 16px rgba(0,0,0,.25); cursor:pointer; transition:transform 150ms var(--ease); }
-.thumb-marker img{ width:100%; height:100%; object-fit:cover; border-radius:50%; display:block; }
+.thumb-marker .tm-img{ display:block; width:100%; height:100%; border-radius:50%; background-size:cover; background-position:center; background-color:#e9e9e6; }
 .thumb-marker .pin-fallback{ display:grid; place-items:center; width:100%; height:100%; font-size:22px; }
 .thumb-marker.on, .pm:hover .thumb-marker{ transform:translate(-50%,-50%) scale(1.15); box-shadow:0 0 0 4px #fff, 0 8px 20px rgba(0,0,0,.35); }
 .thumb-marker.is-sold{ filter:grayscale(.7); opacity:.7; }

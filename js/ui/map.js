@@ -83,7 +83,7 @@ export function thumbPinIcon(it, selected = false){
   const k = listingKind(it), kd = KINDS[k];
   const url = getImageURLs(it)[0];
   const inner = url
-    ? `<img src="${escapeHTML(sizedURL(url, 160))}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    ? `<span class="tm-img" style="background-image:url('${escapeHTML(sizedURL(url, 160))}')"></span>`
     : '<span class="pin-fallback">' + (k === 'land' ? '🌳' : '🏠') + '</span>';
   return L.divIcon({
     className: 'pm',
