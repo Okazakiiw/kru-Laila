@@ -349,7 +349,7 @@ main{ display:block; min-height:50vh; }
 
 /* ---------- 14. Explore (map) ---------- */
 .page-explore .foot{ display:none; }
-.explore{ position:relative; height:calc(100dvh - var(--top-h) - 96px); min-height:420px; margin:0 calc(var(--gutter) * -1); }
+.explore{ position:relative; height:calc(100dvh - var(--top-h) - 96px - env(safe-area-inset-bottom)); min-height:420px; margin:0 calc(var(--gutter) * -1); }
 @media (min-width:1024px){ .explore{ height:calc(100dvh - var(--top-h) - 16px); margin:8px 0 0; } }
 .explore .map{ position:absolute; inset:0; background:#E9E9E6; }
 @media (min-width:1024px){ .explore .map{ border-radius:var(--r-card); overflow:hidden; } }
@@ -836,3 +836,5 @@ body:not(.admin) main{ min-height:calc(100vh - var(--top-h)); }
 .map-legend span{ display:inline-flex; align-items:center; gap:6px; }
 .map-legend i{ width:12px; height:12px; border-radius:50%; display:inline-block; }
 @media (max-width:1023px){ .explore .map-legend{ bottom:calc(var(--sheet-h, 40%) + 12px); } }
+/* v3.2 — หน้าแผนที่: เว้นที่ให้แถบเมนูล่างไว้ใน .explore แล้ว จึงไม่ต้องเว้นซ้ำที่ body (ไม่งั้นเหลือช่องว่างใต้รายการ ~100px) */
+@media (max-width:1023px){ body.page-explore{ padding-bottom:0; } }
