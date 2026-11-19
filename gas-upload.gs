@@ -707,7 +707,7 @@ function fetchAndSave_(url, folder, namePrefix, warnings){
   const sniffed = sniffImageMime_(bytes);
 
   let mime = '';
-  if (/^image\//.test(headerMime)) mime = headerMime;
+  if (/^image\/(jpeg|png|webp|gif|bmp)$/i.test(headerMime)) mime = headerMime.toLowerCase();   // ไม่รับ SVG (ใส่สคริปต์ได้)
   else if (sniffed) mime = sniffed;
   else if (extMatch) mime = 'image/' + (extMatch[1] === 'jpg' ? 'jpeg' : extMatch[1]);
 

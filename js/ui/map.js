@@ -2,7 +2,6 @@
    ui/map.js — Leaflet helpers: tile โทนเทา (OSM + CSS filter — CARTO Positron ต้องใช้ API key),
    หมุดราคาแบบ pill, cluster สีดำ, วงรัศมีตำแหน่งโดยประมาณ
 ============================================================================ */
-import { escapeHTML } from '../core/dom.js';
 import { getImageURLs, sizedURL } from '../data/images.js';
 
 export const hasLeaflet = () => typeof window.L !== 'undefined';
@@ -81,9 +80,11 @@ export function listingKind(it){
 /** หมุดรูปปก (รูปแรกของประกาศ = รูปปกที่แอดมินเลือกด้วย ⭐) · วงขอบ+ป้ายสีตามชนิด · sold = จาง */
 export function thumbPinIcon(it, selected = false){
   const k = listingKind(it), kd = KINDS[k];
-  const url = getImageURLs(it)[0];
+  const raw = getImageURLs(it)[0] || '';
+  // ใช้เฉพาะ https และ encode ตัวอักษรที่หลุดออกจาก url('…') ใน CSS ได้ (กัน CSS injection จาก URL รูปที่แอดมินวางเอง)
+  const url = /^https:\/\//i.test(raw) ? sizedURL(raw, 160).replace(/['"()\s<>]/g, c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')) : '';
   const inner = url
-    ? `<span class="tm-img" style="background-image:url('${escapeHTML(sizedURL(url, 160))}')"></span>`
+    ? `<span class="tm-img" style="background-image:url('${url}')"></span>`
     : '<span class="pin-fallback">' + (k === 'land' ? '🌳' : '🏠') + '</span>';
   return L.divIcon({
     className: 'pm',
