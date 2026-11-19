@@ -74,7 +74,7 @@ const NS = 'http://www.w3.org/2000/svg';
 export function mountIcons(){
   if (document.getElementById('i-x')) return;
   let s = '<svg xmlns="'+NS+'" style="display:none" aria-hidden="true">';
-  for (const k in P) s += '<symbol id="i-' + k + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + P[k] + '</symbol>';
+  for (const k in P) s += '<symbol id="i-' + k + '" viewBox="0 0 24 24">' + P[k] + '</symbol>';
   document.body.insertAdjacentHTML('afterbegin', s + '</svg>');   // ค่าคงที่ของเราเอง ไม่มีข้อมูลผู้ใช้
 }
 export function icon(name, cls=''){
