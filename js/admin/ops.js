@@ -6,7 +6,8 @@
 import { toast, confirmDialog } from '../core/dom.js';
 import { STATUS_LABEL } from '../core/format.js';
 import { db, rulesHint, siteSettings, setSiteSettings, loadTypes } from '../data/firebase.js';
-import { normalizeDriveImageURL, deleteDriveFiles } from '../data/images.js';
+import { normalizeDriveImageURL, deleteDriveFiles, driveIdFromURL } from '../data/images.js';
+import { admin } from './store.js';
 import { pinPayload_ } from '../data/listings.js';
 
 export async function quickStatus(it, value){
@@ -72,13 +73,35 @@ export function matchIdx_(arr, o){
   const u = normalizeDriveImageURL(o.url);
   return arr.findIndex(x => (o.id ? (x.id||'') === o.id : true) && normalizeDriveImageURL(x.url) === u);
 }
-/** onDone(arr) — เดิมเรียก renderEditImages(it, arr) ตรงนี้ */
+/** ไอดีไฟล์ Drive ที่ "ประกาศอื่น" (นอกจาก exceptListingId) ยังใช้อยู่ — เช่น ประกาศที่ก๊อปปี้มา ใช้ไฟล์ชุดเดียวกัน */
+function driveIdsInUse_(exceptListingId){
+  const used = new Set();
+  (admin.items || []).forEach(x => {
+    if (x.id === exceptListingId) return;
+    currentImgArr_(x).forEach(o => { if (o.id) used.add(o.id); const d = driveIdFromURL(o.url); if (d) used.add(d); });
+  });
+  return used;
+}
+/**
+ * ลบไฟล์ใน Drive "เฉพาะที่ไม่มีประกาศอื่นใช้" — เรียกหลังบันทึก Firestore สำเร็จแล้วเท่านั้น
+ * (ถ้าลบไฟล์ก่อนแล้ว Firestore พลาด ประกาศจะชี้ไปรูปที่หายไป) · ข้อมูลประกาศยังโหลดไม่ครบ = ไม่ลบ (ไปจัดการด้วยเครื่องมือ "ตรวจรูปที่ไม่ได้ใช้")
+ */
+export async function releaseDriveFiles_(ids, exceptListingId, keepArr){
+  const list = Array.from(new Set((ids || []).filter(Boolean)));
+  if (!list.length || !admin.ready) return;
+  const used = driveIdsInUse_(exceptListingId);
+  (keepArr || []).forEach(o => { if (o && o.id) used.add(o.id); });
+  const safe = list.filter(id => !used.has(id));
+  if (!safe.length) return;
+  try { await deleteDriveFiles(safe); } catch(e){ console.warn('drive delete:', e); }
+}
+/** onDone(arr) — เดิมเรียก renderEditImages(it, arr) ตรงนี้ · v3.1: บันทึก Firestore ก่อน แล้วค่อยลบไฟล์ใน Drive */
 export async function persistImgs_(it, arr, deleteIds, onDone){
   try {
-    if (deleteIds && deleteIds.length) await deleteDriveFiles(deleteIds);
     await db.collection('listings').doc(it.id).update({
       imageObjs: arr, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    if (deleteIds && deleteIds.length) await releaseDriveFiles_(deleteIds, it.id, arr);
     onDone && onDone(arr);   // วาดใหม่จาก array ล่าสุด
     return true;
   } catch(e){

@@ -124,6 +124,8 @@ function doPost(e) {
     if (data.action === 'listFbPosts')    return out(handleListFbPosts_(data));
     if (data.action === 'setFbCreds')     return out(handleSetFbCreds_(data));
     if (data.action === 'fbCredsStatus')  return out(handleFbCredsStatus_(data));
+    if (data.action === 'listFolder')     return out(handleListFolder_(data));
+    if (data.action === 'securityStatus') return out(handleSecurityStatus_(data));
     return out({ ok:false, error:'Unknown action' });
 
   } catch (err) {
@@ -138,46 +140,90 @@ function handleUpload_(data){
   if (files.length > CONFIG.MAX_FILES_PER_REQUEST)
     return { ok:false, error:'Too many files (max ' + CONFIG.MAX_FILES_PER_REQUEST + ')' };
 
-  const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
-  const items = [];
-
+  // 1) ตรวจทุกไฟล์ "ก่อน" สร้างจริง — ถ้ามีไฟล์เสียจะไม่เหลือไฟล์ที่สร้างค้างใน Drive
+  const decoded = [];
   for (let i = 0; i < files.length; i++){
     const f = files[i];
-    const dataURL = String(f.dataURL || '');
-    const m = dataURL.match(/^data:(.+?);base64,(.+)$/);
+    const m = String(f.dataURL || '').match(/^data:(.+?);base64,(.+)$/);
     if (!m) return { ok:false, error:'Invalid dataURL at index ' + i };
     const mime = m[1];
-    if (!/^image\//.test(mime)) return { ok:false, error:'Not an image at index ' + i };
-
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(mime)) return { ok:false, error:'Not an allowed image type at index ' + i };
     const bytes = Utilities.base64Decode(m[2]);
-    if (bytes.length > CONFIG.MAX_FILE_BYTES)
-      return { ok:false, error:'File too large at index ' + i };
-
-    const name = sanitizeName_(f.name || ('img_' + Date.now() + '_' + i + '.jpg'));
-    const blob = Utilities.newBlob(bytes, mime, name);
-    const file = folder.createFile(blob);
-    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch(se) { console.warn('setSharing: ' + se); }
-    const id = file.getId();
-    items.push({
-      id: id,
-      url: 'https://lh3.googleusercontent.com/d/' + id + '=s1200',
-      name: file.getName()
-    });
+    if (bytes.length > CONFIG.MAX_FILE_BYTES) return { ok:false, error:'File too large at index ' + i };
+    decoded.push({ mime: mime, bytes: bytes, name: sanitizeName_(f.name || ('img_' + Date.now() + '_' + i + '.jpg')) });
   }
-  return { ok:true, items };
+
+  // 2) สร้างไฟล์ — ถ้าพังกลางทาง ย้ายที่สร้างไปแล้วลงถังขยะ (ไม่ทิ้งไฟล์กำพร้า)
+  const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+  const items = [], warnings = [], created = [];
+  try {
+    decoded.forEach(function(d){
+      const file = folder.createFile(Utilities.newBlob(d.bytes, d.mime, d.name));
+      created.push(file);
+      items.push(driveItem_(file, warnings));
+    });
+  } catch (e) {
+    created.forEach(function(f){ try { f.setTrashed(true); } catch(_) {} });
+    return { ok:false, error:'Drive: ' + String(e).slice(0, 200) };
+  }
+  return { ok:true, items: items, warnings: warnings };
+}
+
+/** ตั้งสิทธิ์ "ใครมีลิงก์ก็ดูได้" + คืน { id, url, name } — ถ้าตั้งสิทธิ์ไม่สำเร็จ ใส่คำเตือนใน warnings (ไม่ใส่ในตัว item เพื่อไม่เปลี่ยน schema) */
+function driveItem_(file, warnings){
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
+  catch (se) {
+    console.warn('setSharing: ' + se);
+    if (warnings) warnings.push('ตั้งสิทธิ์แชร์ไฟล์ "' + file.getName() + '" ไม่สำเร็จ — รูปอาจไม่แสดงบนหน้าเว็บ (เช็กนโยบายแชร์ของ Google Workspace)');
+  }
+  const id = file.getId();
+  return { id: id, url: 'https://lh3.googleusercontent.com/d/' + id + '=s1200', name: file.getName() };
+}
+
+/** ไฟล์นี้อยู่ในโฟลเดอร์รูปประกาศ (CONFIG.FOLDER_ID) จริงหรือไม่ */
+function inTargetFolder_(file){
+  const it = file.getParents();
+  while (it.hasNext()) { if (it.next().getId() === CONFIG.FOLDER_ID) return true; }
+  return false;
 }
 
 function handleDelete_(data){
   const ids = Array.isArray(data.ids) ? data.ids : [];
   if (!ids.length) return { ok:false, error:'No ids' };
-  const removed = [];
+  const removed = [], skipped = [];
   for (const id of ids){
     try{
-      DriveApp.getFileById(String(id)).setTrashed(true);
+      const file = DriveApp.getFileById(String(id));
+      // 🔒 ลบได้เฉพาะไฟล์ในโฟลเดอร์รูปประกาศ — กันการสั่งลบไฟล์อื่นใน Drive ด้วยไอดีที่เดามา
+      if (!inTargetFolder_(file)) { skipped.push(id); continue; }
+      file.setTrashed(true);   // ลงถังขยะ (กู้คืนได้ 30 วัน)
       removed.push(id);
-    }catch(e){ /* ignore one-off errors */ }
+    }catch(e){ skipped.push(id); }
   }
-  return { ok:true, removed };
+  return { ok:true, removed: removed, skipped: skipped };
+}
+
+/** รายการไฟล์ทั้งหมดในโฟลเดอร์รูป — ใช้กับเครื่องมือ "ตรวจรูปที่ไม่ได้ใช้" ในหน้า admin (อ่านอย่างเดียว) */
+function handleListFolder_(data){
+  const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+  const it = folder.getFiles();
+  const files = [];
+  const LIMIT = 3000;
+  while (it.hasNext() && files.length < LIMIT){
+    const f = it.next();
+    files.push({ id: f.getId(), name: f.getName(), size: f.getSize(), created: f.getDateCreated().getTime() });
+  }
+  return { ok:true, files: files, truncated: it.hasNext() };
+}
+
+/** สถานะความปลอดภัยของสคริปต์ — ให้หน้า admin แสดงคำเตือน (ไม่ส่งค่าลับกลับ มีแต่ true/false) */
+function handleSecurityStatus_(data){
+  return {
+    ok: true,
+    adminUidsSet: !!(CONFIG.ADMIN_UIDS && CONFIG.ADMIN_UIDS.length),
+    tokenIsDefault: CONFIG.SHARED_TOKEN === 'CHANGE_ME_LONG_RANDOM_STRING',
+    requireAuth: !!CONFIG.REQUIRE_AUTH
+  };
 }
 
 function sanitizeName_(name){
@@ -198,6 +244,7 @@ function handleImportUrls_(data){
   const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
   const items = [];
   const errors = [];
+  const warnings = [];
 
   for (let i = 0; i < urls.length; i++){
     const url = String(urls[i]||'').trim();
@@ -206,13 +253,13 @@ function handleImportUrls_(data){
       continue;
     }
     try {
-      const item = fetchAndSave_(url, folder, 'url_' + i);
+      const item = fetchAndSave_(url, folder, 'url_' + i, warnings);
       items.push(item);
     } catch(e){
       errors.push({ url, error: String(e).slice(0, 200) });
     }
   }
-  return { ok:true, items, errors };
+  return { ok:true, items, errors, warnings };
 }
 
 /* ═════════════════════════ Resolve Google Maps short link → lat/lng ═════════════════════════ */
@@ -337,10 +384,11 @@ function handleImportFbShare_(data){
     const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
     const items = [];
     const errors = [];
+    const warnings = [];
     const limit = Math.min(merged.length, CONFIG.MAX_FILES_PER_REQUEST);
     for (let i = 0; i < limit; i++){
       try {
-        items.push(fetchAndSave_(merged[i], folder, 'fbshare_' + i));
+        items.push(fetchAndSave_(merged[i], folder, 'fbshare_' + i, warnings));
       } catch(e){
         errors.push({ url: merged[i], error: String(e).slice(0, 200) });
       }
@@ -351,7 +399,7 @@ function handleImportFbShare_(data){
                (errors[0] && errors[0].error || 'unknown') };
     }
     // found = จำนวนรูปที่ "พบ" (อาจ > items ถ้าบางอันโหลดไม่ผ่าน), sources = แหล่ง HTML ที่ดึงได้ (ไว้ debug)
-    return { ok:true, items, errors, message: caption, found: merged.length, sources: fetched.sources };
+    return { ok:true, items, errors, warnings, message: caption, found: merged.length, sources: fetched.sources };
 
   } catch(e){
     return { ok:false, error: String(e) };
@@ -635,7 +683,7 @@ function getFbPageId_(){
  *    เพราะ Facebook/Instagram CDN บางครั้งส่ง Content-Type เป็น application/octet-stream
  *    หรือไม่ส่งเลย
  */
-function fetchAndSave_(url, folder, namePrefix){
+function fetchAndSave_(url, folder, namePrefix, warnings){
   const resp = UrlFetchApp.fetch(url, {
     muteHttpExceptions: true,
     followRedirects: true,
@@ -673,13 +721,7 @@ function fetchAndSave_(url, folder, namePrefix){
   // สร้าง blob ใหม่พร้อม MIME ที่ถูกต้อง (กรณี origin ส่งมาผิด)
   const fixedBlob = Utilities.newBlob(bytes, mime, name);
   const file = folder.createFile(fixedBlob);
-  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch(se) { console.warn('setSharing: ' + se); }
-  const id = file.getId();
-  return {
-    id: id,
-    url: 'https://lh3.googleusercontent.com/d/' + id + '=s1200',
-    name: file.getName()
-  };
+  return driveItem_(file, warnings);
 }
 
 /** ตรวจ image type จาก first bytes (magic numbers) — return MIME หรือ null */
@@ -753,12 +795,13 @@ function fetchFbPostImages_(postId, token){
     const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
     const items = [];
     const errors = [];
+    const warnings = [];
     const limit = Math.min(urls.length, CONFIG.MAX_FILES_PER_REQUEST);
     for (let i = 0; i < limit; i++){
-      try { items.push(fetchAndSave_(urls[i], folder, 'fbpost_' + i)); }
+      try { items.push(fetchAndSave_(urls[i], folder, 'fbpost_' + i, warnings)); }
       catch(e){ errors.push({ url: urls[i], error: String(e).slice(0, 200) }); }
     }
-    return { ok:true, items, errors, message: body.message || '', found: urls.length };
+    return { ok:true, items, errors, warnings, message: body.message || '', found: urls.length };
 
   } catch(e){
     return { ok:false, error: String(e) };

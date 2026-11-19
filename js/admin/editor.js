@@ -5,11 +5,13 @@
    - เพิ่มใหม่: อัปโหลดรูปจากเครื่อง "ก่อน" สร้างประกาศ · imageObjs ≤ 30 · pinPayload_ fresh pin
    - แก้ไข: update → ถ้ามีไฟล์ใหม่ อัปโหลดแล้ว merge กับ imageObjs ล่าสุด
    - รูปเดิม: เรียง/ตั้งปก/ลบ บันทึกทันที (freshImgs_/persistImgs_) · นำเข้า URL/FB ผูก Firestore ทันที
+   v3.1 อัปโหลดรูป: ทีละไฟล์ + progress + ลองใหม่เฉพาะที่พลาด · ถ่ายรูป/วางรูป/ลายน้ำ · ตัวนับ n/30
+        · ปิดโดยไม่บันทึก = ลบไฟล์ที่ค้างใน Drive · อัปโหลดก่อนบันทึกข้อความ (พลาดแล้วไม่เกิดข้อมูลครึ่งทาง)
 ============================================================================ */
 import { create, toast, confirmDialog, safeUrl, debounce } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { db, rulesHint, loadTypes } from '../data/firebase.js';
-import { normalizeDriveImageURL, uploadToDrive, deleteDriveFiles, importViaUrls, importViaPostUrl } from '../data/images.js';
+import { normalizeDriveImageURL, uploadFiles, deleteDriveFiles, importViaUrls, importViaPostUrl, driveIdFromURL, MAX_IMAGES, getWatermarkPref, setWatermarkPref } from '../data/images.js';
 import { resolveGmapToCoords } from '../data/geo.js';
 import { pinPayload_ } from '../data/listings.js';
 import { icon } from '../ui/icons.js';
@@ -18,7 +20,7 @@ import { openLayer } from '../ui/overlay.js';
 import { hasLeaflet, buildMapLayers, newMap, approxCircle } from '../ui/map.js';
 import { admin, emit } from './store.js';
 import { clearDisp_, applyJitter_, validCoords_, approxFields_ } from './geo-form.js';
-import { currentImgArr_, freshImgs_, moveImg_, reorderImg_, delImg_ } from './ops.js';
+import { currentImgArr_, freshImgs_, moveImg_, reorderImg_, delImg_, releaseDriveFiles_ } from './ops.js';
 
 const STEPS = [ ['info', 'ข้อมูล'], ['details', 'รายละเอียด'], ['location', 'ตำแหน่ง'], ['images', 'รูปภาพ'] ];
 const UNITS = ['', 'ราคาต่อห้อง', 'ราคาต่อหลัง', 'ราคาต่อแปลง', 'ราคาต่อไร่', 'ราคาต่อตารางวา', 'ราคายกแปลง', 'ราคาต่อเดือน'];
@@ -29,6 +31,8 @@ export function openEditor(it){
   const isEdit = !!it;
   const E = {};     // form elements
   let step = 0, dirty = false, busy = false;
+  let saved = false;                      // บันทึกสำเร็จแล้ว → ไฟล์ที่อัปโหลดไว้ถูกใช้จริง (ห้ามลบตอนปิด)
+  const importedPosts = new Set(), importedUrls = new Set();   // กันนำเข้าซ้ำในรอบเดียว
   let map = null, mapMarker = null, mapCircle = null;
   // เพิ่มใหม่: รายการรูปที่รออัปโหลด/นำเข้าแล้ว เรียงได้ — { kind:'file', file, url } | { kind:'imp', obj }
   let pending = [];
@@ -106,12 +110,29 @@ export function openEditor(it){
   /* images panel */
   const imgGrid = create('div', { class:'img-grid', role:'list', 'aria-label':'รูปภาพ (ลากเพื่อเรียง รูปแรกคือปก)' });
   const fileInput = create('input', { type:'file', accept:'image/*', multiple:'', class:'sr-only', id: fid('files') });
-  const dropZone = create('label', { class:'dropzone', for: fileInput.id }, [ icon('upload','ic-lg'), create('b', { text:'เลือกรูปจากเครื่อง' }), create('span', { class:'label', text:'หรือลากไฟล์มาวาง · สูงสุด 12 รูปต่อครั้ง · ย่อขนาดอัตโนมัติ' }) ]);
+  const camInput = create('input', { type:'file', accept:'image/*', capture:'environment', class:'sr-only', id: fid('cam'), tabindex:'-1' });
+  const dropZone = create('label', { class:'dropzone', for: fileInput.id }, [ icon('upload','ic-lg'), create('b', { text:'เลือกรูปจากเครื่อง' }), create('span', { class:'label', text:'คลิกเพื่อเลือกหลายรูป · ลากไฟล์มาวาง · หรือวางรูปจากคลิปบอร์ด (Ctrl+V) · ย่อขนาดอัตโนมัติ' }) ]);
+  const camBtn = create('button', { type:'button', class:'btn btn-soft', hidden: window.matchMedia('(pointer:coarse)').matches ? null : '' }, [ icon('camera','ic-sm'), 'ถ่ายรูปด้วยกล้อง' ]);
+  const wmPref = getWatermarkPref();
+  const wmOn = create('input', { type:'checkbox', id: fid('wm') });
+  const wmText = create('input', { class:'input', maxlength:'40', placeholder:'ข้อความลายน้ำ เช่น ครูไลลา 08x-xxx-xxxx', 'aria-label':'ข้อความลายน้ำ', autocomplete:'off' });
+  wmOn.checked = wmPref.on; wmText.value = wmPref.text;
+  const saveWm = () => setWatermarkPref({ on: wmOn.checked, text: wmText.value });
+  wmOn.addEventListener('change', saveWm); wmText.addEventListener('input', saveWm);
+  const wmRow = create('div', { class:'inner wm-row' }, [
+    create('label', { class:'switch', for: wmOn.id }, [ wmOn, create('span', { class:'track-sw', 'aria-hidden':'true' }), create('span', { text:'ใส่ลายน้ำบนรูปที่อัปโหลดจากเครื่อง' }) ]),
+    wmText,
+    create('small', { class:'help', text:'จำค่านี้ไว้ในเครื่องนี้ · ใช้กับรูปที่เลือก/ถ่าย/วางเท่านั้น (รูปนำเข้าจาก URL/FB ไม่ใส่) · รูปที่อัปโหลดไปแล้วเปลี่ยนไม่ได้' })
+  ]);
+  const imgCount = create('span', { class:'label img-count', 'aria-live':'polite' });
+  const upBar = create('span');
+  const upText = create('span', { class:'label' });
+  const upProg = create('div', { class:'up-prog', hidden:'', role:'status' }, [ create('div', { class:'up-bar' }, upBar), upText ]);
   const importUrls = create('textarea', { class:'input', rows:'3', placeholder:'วาง URL รูป 1 บรรทัด/อัน (รองรับ Facebook CDN, Instagram, อื่น ๆ)', 'aria-label':'URL รูป' });
   const importUrlsBtn = create('button', { type:'button', class:'btn btn-soft' }, [ icon('download'), 'นำเข้าจาก URL' ]);
   const importPost = create('input', { class:'input', placeholder:'URL โพสต์ Facebook เช่น https://www.facebook.com/share/p/XXX/', 'aria-label':'URL โพสต์ Facebook' });
   const importPostBtn = create('button', { type:'button', class:'btn btn-soft' }, [ icon('facebook'), 'ดึงจากโพสต์ FB' ]);
-  const tabUpload = create('div', { class:'tabpanel', role:'tabpanel' }, [ dropZone, fileInput ]);
+  const tabUpload = create('div', { class:'tabpanel', role:'tabpanel' }, [ dropZone, fileInput, camInput, camBtn, wmRow ]);
   const tabImport = create('div', { class:'tabpanel', role:'tabpanel', hidden:'' }, [
     create('div', { class:'field' }, [ importUrls, importUrlsBtn ]),
     create('div', { class:'field' }, [ importPost, importPostBtn ]),
@@ -124,7 +145,7 @@ export function openEditor(it){
       tabUpload.hidden = k !== 'up'; tabImport.hidden = k !== 'imp';
     } })));
   const pImages = create('div', { class:'fgrid' }, [
-    create('div', { class:'field' }, [ create('span', { class:'flabel', text:'รูปในประกาศ — ลากเพื่อเรียง · รูปแรกคือรูปปก' }), imgGrid ]),
+    create('div', { class:'field' }, [ create('div', { class:'flabel-row' }, [ create('span', { class:'flabel', text:'รูปในประกาศ — ลากเพื่อเรียง · รูปแรกคือรูปปก' }), imgCount ]), imgGrid, upProg ]),
     tabs, tabUpload, tabImport
   ]);
   const panels = [pInfo, pDetails, pLocation, pImages];
@@ -161,6 +182,14 @@ export function openEditor(it){
       drawer.classList.remove('in'); scrim.classList.remove('in');
       setTimeout(() => { drawer.remove(); scrim.remove(); }, 260);
       if (map) map.remove();
+      document.removeEventListener('paste', onPaste);
+      // ปิดโดยไม่บันทึก → ไฟล์ที่อัปโหลด/นำเข้าไว้ใน Drive แล้วแต่ไม่มีประกาศใช้ จะกลายเป็นไฟล์กำพร้า → ลงถังขยะ
+      if (!saved){
+        const orphan = [];
+        pending.forEach(p => { if (p.kind === 'imp' && p.obj && p.obj.id) orphan.push(p.obj.id); else if (p.uploaded) orphan.push(p.uploaded.id); });
+        editNewFiles.forEach(p => { if (p.uploaded) orphan.push(p.uploaded.id); });
+        if (orphan.length) deleteDriveFiles(orphan).catch(e => console.warn('cleanup orphan:', e));
+      }
       pending.forEach(p => p.kind === 'file' && URL.revokeObjectURL(p.url));
       editNewFiles.forEach(p => URL.revokeObjectURL(p.url));
       openState = null;
@@ -282,8 +311,8 @@ export function openEditor(it){
   }
 
   /* ── images ── */
-  function imgTile(src, idx, total, { badge, onCover, onLeft, onRight, onDelete, onDrop, label }){
-    const tile = create('div', { class:'img-tile', role:'listitem', draggable:'true', dataset:{ idx:String(idx) }, 'aria-label': label || `รูปที่ ${idx + 1}` }, [
+  function imgTile(src, idx, total, { badge, tone, onCover, onLeft, onRight, onDelete, onDrop, label }){
+    const tile = create('div', { class:'img-tile' + (tone === 'err' ? ' is-err' : ''), role:'listitem', draggable:'true', dataset:{ idx:String(idx) }, 'aria-label': label || `รูปที่ ${idx + 1}` }, [
       create('img', { src, alt:'', loading:'lazy' }),
       idx === 0 ? create('span', { class:'chip dark cover' }, [ icon('star','ic-sm'), 'ปก' ]) : null,
       badge ? create('span', { class:'chip on-img badge2', text:badge }) : null,
@@ -306,6 +335,16 @@ export function openEditor(it){
     });
     return tile;
   }
+  const totalCount = () => isEdit ? editImgs.length + editNewFiles.length : pending.length;
+  const STATE_BADGE = { busy:'กำลังอัปโหลด…', done:'อัปโหลดแล้ว', fail:'ล้มเหลว' };
+  const fileBadge = (p) => STATE_BADGE[p.state] || 'รออัปโหลด';
+  let rafId = 0;
+  const scheduleRender = () => { if (!rafId) rafId = requestAnimationFrame(() => { rafId = 0; renderImages(); }); };
+  /** รูปที่อัปโหลดขึ้น Drive แล้วแต่ยังไม่บันทึกประกาศ — ถ้าผู้ใช้ลบรูปนั้นออก ต้องลบไฟล์ใน Drive ด้วย */
+  function dropEntryFile(p){
+    if (p.uploaded && p.uploaded.id) deleteDriveFiles([p.uploaded.id]).catch(e => console.warn('drive delete:', e));
+    URL.revokeObjectURL(p.url);
+  }
   function renderImages(){
     imgGrid.textContent = '';
     if (isEdit){
@@ -319,44 +358,107 @@ export function openEditor(it){
         onDrop: (from, to) => { if (from < total && to < total) reorderImg_({ id: it.id }, editImgs[from], to, redraw); }
       })));
       editNewFiles.forEach((p, j) => imgGrid.appendChild(imgTile(p.url, total + j, total + editNewFiles.length, {
-        badge:'รออัปโหลด', label:'รูปใหม่ รออัปโหลดเมื่อกดอัปเดต',
-        onDelete: () => { URL.revokeObjectURL(p.url); editNewFiles.splice(j, 1); renderImages(); },
+        badge: fileBadge(p), tone: p.state === 'fail' ? 'err' : '', label: p.error ? ('อัปโหลดไม่สำเร็จ: ' + p.error) : 'รูปใหม่ รออัปโหลดเมื่อกดอัปเดต',
+        onDelete: () => { dropEntryFile(p); editNewFiles.splice(editNewFiles.indexOf(p), 1); renderImages(); },
         onDrop: () => {}
       })));
     } else {
       const move = (from, to) => { const [x] = pending.splice(from, 1); pending.splice(to, 0, x); renderImages(); markDirty(); };
       pending.forEach((p, idx) => imgGrid.appendChild(imgTile(p.kind === 'file' ? p.url : p.obj.url, idx, pending.length, {
-        badge: p.kind === 'imp' ? 'นำเข้าแล้ว' : 'รออัปโหลด',
+        badge: p.kind === 'imp' ? 'นำเข้าแล้ว' : fileBadge(p), tone: p.state === 'fail' ? 'err' : '',
+        label: p.error ? ('อัปโหลดไม่สำเร็จ: ' + p.error) : null,
         onCover: () => move(idx, 0),
         onLeft:  () => move(idx, idx - 1),
         onRight: () => move(idx, idx + 1),
         onDelete: async () => {
           if (p.kind === 'imp'){ try{ if (p.obj.id) await deleteDriveFiles([p.obj.id]); }catch(e){ console.warn(e); } }
-          else URL.revokeObjectURL(p.url);
+          else dropEntryFile(p);
           pending.splice(pending.indexOf(p), 1); renderImages(); markDirty();
         },
         onDrop: move
       })));
     }
     if (!imgGrid.childNodes.length) imgGrid.appendChild(create('div', { class:'img-empty label' }, [ icon('images','ic-lg'), 'ยังไม่มีรูป — เพิ่มจากด้านล่าง' ]));
-    const nImg = isEdit ? editImgs.length + editNewFiles.length : pending.length;
+    const nImg = totalCount();
     stepNav.querySelector('[data-i="3"] span:last-child').textContent = nImg ? `รูปภาพ (${nImg})` : 'รูปภาพ';
+    imgCount.textContent = `${nImg}/${MAX_IMAGES} รูป`;
+    imgCount.classList.toggle('full', nImg >= MAX_IMAGES);
+    const full = nImg >= MAX_IMAGES;
+    fileInput.disabled = camInput.disabled = full;
+    dropZone.classList.toggle('disabled', full);
   }
+  const fileKey = (f) => [f.name, f.size, f.lastModified].join('|');
+  const looksImage = (f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name || '');
   function addFiles(files){
-    const list = Array.from(files || []).filter(f => /^image\//.test(f.type)).slice(0, 12);
-    if (!list.length) return;
-    const pendingFiles = isEdit ? editNewFiles : pending.filter(p => p.kind === 'file');
-    if (pendingFiles.length + list.length > 12) toast('อัปโหลดได้สูงสุด 12 รูปต่อครั้ง','warn');
-    list.slice(0, Math.max(0, 12 - pendingFiles.length)).forEach(file => {
-      const entry = { kind:'file', file, url: URL.createObjectURL(file) };
+    const all = Array.from(files || []).filter(looksImage);
+    if (!all.length) return toast('ไม่พบไฟล์รูปภาพ','warn');
+    const have = new Set((isEdit ? editNewFiles : pending.filter(p => p.kind === 'file')).map(p => fileKey(p.file)));
+    const list = all.filter(f => { const k = fileKey(f); if (have.has(k)) return false; have.add(k); return true; });
+    if (list.length < all.length) toast(`ข้าม ${all.length - list.length} รูปที่เลือกไว้แล้ว`,'warn');
+    const room = Math.max(0, MAX_IMAGES - totalCount());
+    if (!room) return toast(`ครบ ${MAX_IMAGES} รูปแล้ว — ลบรูปเก่าก่อนเพิ่ม`,'warn');
+    if (list.length > room) toast(`เพิ่มได้อีก ${room} รูป (สูงสุด ${MAX_IMAGES}) — ตัดส่วนที่เกินออก`,'warn');
+    list.slice(0, room).forEach(file => {
+      const entry = { kind:'file', file, url: URL.createObjectURL(file), state:'', error:'', uploaded:null };
       (isEdit ? editNewFiles : pending).push(entry);
     });
     renderImages(); markDirty();
   }
   fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+  camInput.addEventListener('change', () => { addFiles(camInput.files); camInput.value = ''; });
+  camBtn.addEventListener('click', () => camInput.click());
   dropZone.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')){ e.preventDefault(); dropZone.classList.add('over'); } });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
   dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('over'); addFiles(e.dataTransfer.files); });
+  /* วางรูปจากคลิปบอร์ด (Ctrl+V) — ใช้ได้ทุกขั้น: พาไปขั้นรูปภาพให้เอง */
+  function onPaste(e){
+    const files = Array.from((e.clipboardData && e.clipboardData.files) || []).filter(f => /^image\//.test(f.type));
+    if (!files.length) return;   // วางข้อความตามปกติ
+    e.preventDefault();
+    if (step !== 3) go(3);
+    addFiles(files);
+  }
+  document.addEventListener('paste', onPaste);
+
+  /* ── progress + อัปโหลดทีละไฟล์ ── */
+  function showProg(done, total, msg){
+    upProg.hidden = false;
+    upBar.style.width = (total ? Math.round(done / total * 100) : 0) + '%';
+    upText.textContent = msg || `กำลังอัปโหลด ${done}/${total} รูป…`;
+  }
+  /**
+   * อัปโหลด entries ที่ยังไม่เคยสำเร็จ (ที่สำเร็จแล้วถูกข้าม → "ลองใหม่เฉพาะที่ล้มเหลว")
+   * คืน items ตามลำดับ entries · ถ้ามีรูปพลาด: ไม่บันทึกอะไร + พาไปดูรูปที่พลาด
+   */
+  async function uploadEntries(entries){
+    const wm = (wmOn.checked ? wmText.value : '').trim();
+    const todo = entries.filter(e => !e.uploaded).length;
+    showProg(entries.length - todo, entries.length);
+    const r = await uploadFiles(entries, {
+      watermark: wm, concurrency: 2,
+      onState: (e, st) => { e.state = st; scheduleRender(); },
+      onProgress: (d, t) => showProg(d, t)
+    });
+    r.warnings.forEach(w => toast(w, 'warn', 8000));
+    if (r.failed.length){
+      showProg(entries.length - r.failed.length, entries.length, `อัปโหลดไม่สำเร็จ ${r.failed.length} รูป — กดบันทึกอีกครั้งเพื่อลองใหม่เฉพาะรูปที่พลาด`);
+      go(3);
+      const err = new Error(`อัปโหลดไม่สำเร็จ ${r.failed.length} จาก ${entries.length} รูป: ${r.failed[0].error}`);
+      err.long = true; throw err;
+    }
+    upProg.hidden = true;
+    return r.items;
+  }
+
+  /* นำเข้าเกินเพดาน 30 รูป → เก็บเท่าที่ใส่ได้ ส่วนเกินลบจาก Drive ทันที (กันไฟล์ค้าง) */
+  async function fitItems(items, existing){
+    const room = Math.max(0, MAX_IMAGES - existing);
+    if (items.length <= room) return items;
+    const extra = items.slice(room).map(o => o.id).filter(Boolean);
+    if (extra.length){ try{ await deleteDriveFiles(extra); }catch(e){ console.warn(e); } }
+    toast(`ใส่ได้อีก ${room} รูป (สูงสุด ${MAX_IMAGES}) — ส่วนที่เกินลบจาก Drive แล้ว`,'warn',6000);
+    return items.slice(0, room);
+  }
 
   /* Import images in EDIT form: ผูก Firestore ทันที (เดิม: pushImportedToEdit) */
   async function pushImportedToEdit(items, opts){
@@ -367,8 +469,10 @@ export function openEditor(it){
     const snap = await ref.get();
     if (!snap.exists) throw new Error('ไม่พบประกาศนี้');
     const before = snap.data() || {};
-    const merged = (Array.isArray(before.imageObjs) ? before.imageObjs : []).concat(items);
-    const patch = { imageObjs: merged, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    const cur = currentImgArr_(before);     // รองรับประกาศเก่าที่เก็บเป็น imageURLs (กันรูปเดิมหายเมื่อเพิ่มรูปแรกเป็น imageObjs)
+    items = await fitItems(items, cur.length);
+    if (!items.length) return;
+    const patch = { imageObjs: cur.concat(items), updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
     if (opts.caption && !((E.desc?.value||'').trim())){
       patch.desc = opts.caption;
       E.desc.value = opts.caption;
@@ -385,14 +489,25 @@ export function openEditor(it){
   importUrlsBtn.addEventListener('click', async () => {
     const text = (importUrls.value||'').trim();
     if (!text) return toast('วาง URL ก่อน','warn');
-    const urls = text.split(/\s+/).filter(u => /^https?:\/\//i.test(u));
+    let urls = Array.from(new Set(text.split(/\s+/).filter(u => /^https?:\/\//i.test(u))));
     if (!urls.length) return toast('ไม่พบ URL ที่ถูกต้อง','warn');
+    const fresh = urls.filter(u => !importedUrls.has(u));
+    if (fresh.length < urls.length) toast(`ข้าม ${urls.length - fresh.length} URL ที่นำเข้าไปแล้ว`,'warn');
+    urls = fresh;
+    if (!urls.length) return;
+    const room = MAX_IMAGES - totalCount();
+    if (room <= 0) return toast(`ครบ ${MAX_IMAGES} รูปแล้ว — ลบรูปเก่าก่อนเพิ่ม`,'warn');
     importUrlsBtn.disabled = true; busy = true;
     try{
       toast('กำลังดึงรูปและเซฟลง Drive…');
       const r = await importViaUrls(urls);
+      urls.forEach(u => importedUrls.add(u));
+      (r.warnings || []).forEach(w => toast(w, 'warn', 8000));
       if (isEdit) await pushImportedToEdit(r.items||[]);
-      else { (r.items||[]).forEach(obj => pending.push({ kind:'imp', obj })); renderImages(); markDirty(); }
+      else {
+        const items = await fitItems(r.items||[], pending.length);
+        items.forEach(obj => pending.push({ kind:'imp', obj })); renderImages(); markDirty();
+      }
       importUrls.value = '';
       const okN = (r.items||[]).length;
       const errN = (r.errors||[]).length;
@@ -412,13 +527,19 @@ export function openEditor(it){
   importPostBtn.addEventListener('click', async () => {
     const postUrl = (importPost.value||'').trim();
     if (!postUrl) return toast('วาง URL โพสต์ก่อน','warn');
+    if (MAX_IMAGES - totalCount() <= 0) return toast(`ครบ ${MAX_IMAGES} รูปแล้ว — ลบรูปเก่าก่อนเพิ่ม`,'warn');
+    const sameAsListing = isEdit && editImgs.length && (E.fbUrl?.value || '').trim() === postUrl;
+    if ((importedPosts.has(postUrl) || sameAsListing) && !confirmDialog('นำเข้ารูปจากโพสต์นี้ไปแล้ว — นำเข้าซ้ำจะได้รูปซ้ำ ต้องการนำเข้าอีกครั้งหรือไม่?')) return;
     importPostBtn.disabled = true; busy = true;
     try{
       toast('กำลังดึงรูปจากโพสต์…');
       const r = await importViaPostUrl(postUrl);
+      importedPosts.add(postUrl);
+      (r.warnings || []).forEach(w => toast(w, 'warn', 8000));
       if (isEdit) await pushImportedToEdit(r.items||[], { caption: r.message || '', fbUrl: postUrl });
       else {
-        (r.items||[]).forEach(obj => pending.push({ kind:'imp', obj }));
+        const items = await fitItems(r.items||[], pending.length);
+        items.forEach(obj => pending.push({ kind:'imp', obj }));
         renderImages();
         // เติม caption + ลิงก์โพสต์ FB ถ้าช่องยังว่าง
         if (r.message && !((E.desc?.value||'').trim())) E.desc.value = r.message;
@@ -441,15 +562,14 @@ export function openEditor(it){
   async function saveNew(){
     const title = (E.title?.value||'').trim();
     // อัปโหลดรูปจากเครื่อง "ก่อน" สร้างประกาศ — ถ้าอัปโหลดพัง จะไม่มีประกาศไม่มีรูปค้างบนเว็บ
+    // (รูปที่ขึ้น Drive สำเร็จแล้วถูกจำไว้ → กดบันทึกใหม่จะอัปโหลดเฉพาะรูปที่พลาด)
     const files = pending.filter(p => p.kind === 'file');
-    let uploaded = [];
     if (files.length){
       toast('กำลังอัปโหลดรูปจากเครื่อง…');
-      uploaded = await uploadToDrive(files.map(p => p.file));
+      await uploadEntries(files);
     }
-    // เรียงตามลำดับที่จัดไว้ (เดิม: รูปนำเข้าก่อน แล้วตามด้วยรูปอัปโหลด)
-    let k = 0;
-    const ordered = pending.map(p => p.kind === 'imp' ? p.obj : uploaded[k++]).filter(Boolean);
+    // เรียงตามลำดับที่จัดไว้ (รูปนำเข้า + รูปอัปโหลด ตามที่ลากเรียงในหน้ารูปภาพ)
+    const ordered = pending.map(p => p.kind === 'imp' ? p.obj : p.uploaded).filter(Boolean);
     const meta = {
       title,
       type: E.type?.value || 'บ้าน',
@@ -468,15 +588,22 @@ export function openEditor(it){
       lat: num(E.lat?.value),
       lng: num(E.lng?.value),
       ...approxFields_(E.lat, E.lng, radiusSel, E.approxLoc),
-      imageObjs: ordered.slice(0, 30),   // rules จำกัด 30 รูป
+      imageObjs: ordered.slice(0, MAX_IMAGES),   // rules จำกัด 30 รูป
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     await db.collection('listings').add(meta);
+    saved = true;
     toast('เพิ่มประกาศแล้ว','success');
   }
   async function saveEdit(){
     const ref = db.collection('listings').doc(it.id);
+    // อัปโหลดรูปใหม่ "ก่อน" บันทึกข้อความ — ถ้ารูปพลาดจะยังไม่บันทึกอะไร (ไม่เกิดสถานะครึ่ง ๆ กลาง ๆ)
+    let items = [];
+    if (editNewFiles.length){
+      toast('กำลังอัปโหลดรูปเพิ่ม…');
+      items = await uploadEntries(editNewFiles);
+    }
     const payload = {
       title: (E.title.value||'').trim(),
       type: E.type.value || 'บ้าน',
@@ -497,17 +624,19 @@ export function openEditor(it){
       ...approxFields_(E.lat, E.lng, radiusSel, E.approxLoc),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
-    await ref.update(payload);
-
-    const newFiles = editNewFiles.map(p => p.file);
-    if (newFiles.length){
-      toast('กำลังอัปโหลดรูปเพิ่ม…');
-      const items = await uploadToDrive(newFiles);
+    if (items.length){
       const snap = await ref.get();
-      const before = snap.data() || {};
-      const merged = (Array.isArray(before.imageObjs) ? before.imageObjs : []).concat(items);
-      await ref.update({ imageObjs: merged, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const cur = currentImgArr_(snap.data() || {});   // อ่านล่าสุด (รวมรูปที่เรียง/นำเข้าไปแล้วระหว่างแก้) + รองรับ imageURLs เก่า
+      const merged = cur.concat(items);
+      if (merged.length > MAX_IMAGES){
+        const extra = merged.splice(MAX_IMAGES).map(o => o.id).filter(Boolean);
+        if (extra.length){ try{ await deleteDriveFiles(extra); }catch(e){ console.warn(e); } }
+        toast(`ครบ ${MAX_IMAGES} รูป — ตัดรูปส่วนเกินออก`,'warn',6000);
+      }
+      payload.imageObjs = merged;
     }
+    await ref.update(payload);   // ข้อความ + รูปใหม่ ในการเขียนครั้งเดียว
+    saved = true;
     toast('อัปเดตแล้ว','success');
   }
   saveBtn.addEventListener('click', async () => {
@@ -520,7 +649,7 @@ export function openEditor(it){
     }catch(err){
       console.error(err);
       if (String(err).includes('permission')) rulesHint(isEdit ? 'อัปเดต' : 'บันทึก');
-      else toast((isEdit ? 'อัปเดตล้มเหลว: ' : 'เกิดข้อผิดพลาด: ') + (err.message||''),'error',5000);
+      else toast((err.long ? '' : (isEdit ? 'อัปเดตล้มเหลว: ' : 'เกิดข้อผิดพลาด: ')) + (err.message||''),'error', err.long ? 9000 : 5000);
     }finally{ saveBtn.disabled = false; busy = false; }
   });
 
@@ -530,9 +659,9 @@ export function openEditor(it){
       // Also try to remove associated drive files
       const snap = await db.collection('listings').doc(it.id).get();
       const data = snap.exists ? snap.data() : null;
-      const ids = (data && Array.isArray(data.imageObjs)) ? data.imageObjs.map(o => o.id).filter(Boolean) : [];
-      if (ids.length){ try{ await deleteDriveFiles(ids); }catch(e){ console.warn('drive delete:', e); } }
-      await db.collection('listings').doc(it.id).delete();
+      const ids = data ? currentImgArr_(data).map(o => o.id || driveIdFromURL(o.url)).filter(Boolean) : [];
+      await db.collection('listings').doc(it.id).delete();           // ลบประกาศก่อน — ถ้าพลาดจะไม่เสียรูป
+      await releaseDriveFiles_(ids, it.id, []);                       // แล้วค่อยลบไฟล์ Drive เฉพาะที่ไม่มีประกาศอื่นใช้ร่วม
       toast('ลบประกาศแล้ว','success');
       dirty = false;
       layer.close(true);

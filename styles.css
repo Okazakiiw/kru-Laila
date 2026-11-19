@@ -793,3 +793,32 @@ input.sr-only:focus-visible + .dropzone{ outline:2px solid var(--ink); outline-o
 body:not([class*="page-"]) .foot{ display:none; }
 body:not(.admin) main{ min-height:calc(100vh - var(--top-h)); }
 .page-explore main{ min-height:0; }
+
+/* ===== v3.1 — อัปโหลดรูป: ตัวนับ · progress · ลายน้ำ · เครื่องมือ Drive ===== */
+.flabel-row{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.img-count{ font-variant-numeric:tabular-nums; font-weight:600; color:var(--ink); }
+.img-count.full{ color:var(--red); }
+.dropzone.disabled{ opacity:.5; pointer-events:none; }
+.img-tile.is-err{ box-shadow:inset 0 0 0 3px var(--red); }
+.up-prog{ display:grid; gap:6px; margin-top:10px; }
+.up-bar{ height:8px; border-radius:var(--r-pill); background:var(--inner-2); overflow:hidden; }
+.up-bar span{ display:block; height:100%; width:0; background:var(--ink); border-radius:inherit; transition:width .25s ease; }
+.wm-row{ display:grid; gap:10px; }
+.dt-out{ margin-top:14px; display:grid; gap:10px; }
+.dt-row{ display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--r-inner); background:var(--inner); font-size:14px; }
+.dt-row .ic{ margin-top:2px; flex:none; }
+.dt-row.ok .ic{ color:#2E8B1F; }
+.dt-row.warn{ background:#FFF4DF; }
+.dt-row.warn .ic{ color:#B26A00; }
+.dt-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:8px; }
+.dt-tile{ position:relative; display:block; border-radius:12px; overflow:hidden; background:var(--inner); cursor:pointer; }
+.dt-tile img{ width:100%; aspect-ratio:1; object-fit:cover; display:block; }
+.dt-tile input{ position:absolute; left:8px; top:8px; width:20px; height:20px; accent-color:var(--ink); }
+.dt-cap{ display:block; padding:6px 8px; font-size:11px; color:var(--muted); }
+.btn-danger-solid{ background:var(--red); color:#fff; }
+.btn-danger-solid:hover{ background:#D93636; }
+.img-tile .badge2{ top:8px; bottom:auto; max-width:calc(100% - 56px); overflow:hidden; text-overflow:ellipsis; }
+.img-tile .cover ~ .badge2{ top:44px; }
+.img-tile.is-err::after{ content:""; position:absolute; inset:0; border:3px solid var(--red); border-radius:inherit; pointer-events:none; }
+.img-tile.is-err .badge2{ background:var(--red); color:#fff; }
+.img-count{ white-space:nowrap; flex:none; }

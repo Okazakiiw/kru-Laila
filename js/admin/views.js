@@ -12,6 +12,7 @@ import { statusEl, chip, imgEl, countUp, countSpan, emptyState } from '../ui/com
 import { hasLeaflet, monoTiles, newMap, pricePinIcon, TH_CENTER } from '../ui/map.js';
 import { admin, emit } from './store.js';
 import { openEditor } from './editor.js';
+import { driveToolsCard } from './media.js';
 import {
   quickStatus, duplicateListing, togglePin, exportListings, importListingsFile,
   addType, removeType, saveSiteSettings, setLeadHandled, deleteLead
@@ -416,7 +417,8 @@ export function settings(root){
         ]),
         create('p', { class:'label fine', style:{ marginTop:'14px' } },
           'นำเข้ารูปจาก Facebook: ในฟอร์มประกาศ ขั้น "รูปภาพ" แท็บ "นำเข้า" วาง URL โพสต์สาธารณะ (facebook.com/share/p/…, /posts/…, /photo/?fbid=…) ระบบดึงรูปและ caption จาก meta tag แล้วเซฟลง Google Drive ทันที — ไม่ต้องใช้ Token · ใช้ได้เฉพาะโพสต์สาธารณะ')
-      ])
+      ]),
+      driveToolsCard()
     ]),
     create('div', { class:'savebar', role:'region', 'aria-label':'บันทึกการตั้งค่า' }, [ state, saveBtn ])
   );
