@@ -12,7 +12,7 @@ import { store, setFilters, resetFilters, activeFilterCount } from '../store.js'
 import { icon } from '../ui/icons.js';
 import { statusEl, priceEl, imgEl, listingHref, emptyState } from '../ui/components.js';
 import { openLayer } from '../ui/overlay.js';
-import { ensureLeaflet, monoTiles, newMap, pricePinIcon, clusterGroup, approxCircle, approxStyle, TH_CENTER } from '../ui/map.js';
+import { ensureLeaflet, monoTiles, newMap, thumbPinIcon, mapLegend, clusterGroup, approxCircle, approxStyle, TH_CENTER } from '../ui/map.js';
 
 const SORTS = { new:'ใหม่สุด', priceAsc:'ราคาต่ำ → สูง', priceDesc:'ราคาสูง → ต่ำ' };
 const PRICE_PRESETS = [ ['', '1000000', 'ไม่เกิน 1 ล้าน'], ['1000000', '3000000', '1–3 ล้าน'], ['3000000', '', '3 ล้านขึ้นไป'], ['', '10000', 'เช่า ≤ ฿10,000'] ];
@@ -43,6 +43,7 @@ export function mount(root){
     map = newMap(mapEl, { layers:[ monoTiles() ] }).setView(TH_CENTER, 6);
     cluster = clusterGroup(); map.addLayer(cluster);
     circles = L.layerGroup().addTo(map);
+    mapEl.appendChild(mapLegend());
     requestAnimationFrame(() => map.invalidateSize());
     render();
   }).catch(() => {
@@ -143,7 +144,7 @@ export function mount(root){
     const active = on || selectedId === id;
     if (m.kind === 'pin'){
       const el = m.layer.getElement();
-      if (el) el.querySelector('.pin-pill')?.classList.toggle('on', active);
+      if (el) el.querySelector('.thumb-marker')?.classList.toggle('on', active);
       m.layer.setZIndexOffset(active ? 1000 : 0);
     } else m.layer.setStyle(approxStyle(+m.it.approxRadius || 300, active));
   }
@@ -190,7 +191,7 @@ export function mount(root){
         circles.addLayer(c);
         markers.set(it.id, { layer:c, kind:'circle', it });
       } else {
-        const mk = L.marker([pc.lat, pc.lng], { icon: pricePinIcon(it, it.id === selectedId), title: it.title || '', keyboard:true, riseOnHover:true });
+        const mk = L.marker([pc.lat, pc.lng], { icon: thumbPinIcon(it, it.id === selectedId), title: it.title || '', keyboard:true, riseOnHover:true });
         mk.bindPopup(() => popupContent(it), { maxWidth:260, minWidth:260, offset:[0, -10] });
         mk.on('mouseover', () => highlight(it.id, true));
         mk.on('mouseout', () => highlight(it.id, false));

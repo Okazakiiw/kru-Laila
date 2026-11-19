@@ -3,7 +3,7 @@
    หมุดราคาแบบ pill, cluster สีดำ, วงรัศมีตำแหน่งโดยประมาณ
 ============================================================================ */
 import { escapeHTML } from '../core/dom.js';
-import { shortPrice } from '../core/format.js';
+import { getImageURLs, sizedURL } from '../data/images.js';
 
 export const hasLeaflet = () => typeof window.L !== 'undefined';
 
@@ -67,14 +67,37 @@ export function newMap(el, opts = {}){
   return map;
 }
 
-/** หมุดราคา: pill สีขาว · selected = ดำ · sold = จาง (ข้อความเป็นตัวเลขราคา escape แล้ว) */
-export function pricePinIcon(it, selected = false){
-  const sold = (it.status === 'sold');
+/** ชนิดของประกาศบนแผนที่: เช่า (listingMode=rent) · ที่ดิน (type มีคำว่า ที่ดิน) · บ้าน (ที่เหลือ) */
+export const KINDS = {
+  land:  { label:'ที่ดิน',  color:'#2E8B1F' },
+  house: { label:'บ้าน',    color:'#1F5FD1' },
+  rent:  { label:'บ้านเช่า', color:'#D9780F' }
+};
+export function listingKind(it){
+  if (it && it.listingMode === 'rent') return 'rent';
+  return /ที่ดิน/.test((it && it.type) || '') ? 'land' : 'house';
+}
+
+/** หมุดรูปปก (รูปแรกของประกาศ = รูปปกที่แอดมินเลือกด้วย ⭐) · วงขอบ+ป้ายสีตามชนิด · sold = จาง */
+export function thumbPinIcon(it, selected = false){
+  const k = listingKind(it), kd = KINDS[k];
+  const url = getImageURLs(it)[0];
+  const inner = url
+    ? `<img src="${escapeHTML(sizedURL(url, 160))}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    : '<span class="pin-fallback">' + (k === 'land' ? '🌳' : '🏠') + '</span>';
   return L.divIcon({
     className: 'pm',
-    html: `<span class="pin-pill${selected ? ' on' : ''}${sold ? ' sold' : ''}">${escapeHTML(shortPrice(it))}</span>`,
-    iconSize: [0, 0], iconAnchor: [0, 0]
+    html: `<div class="thumb-marker k-${k}${selected ? ' on' : ''}${it.status === 'sold' ? ' is-sold' : ''}" style="--kc:${kd.color}">${inner}<span class="tm-tag">${kd.label}</span></div>`,
+    iconSize: [56, 56], iconAnchor: [28, 28], popupAnchor: [0, -30]
   });
+}
+
+/** คำอธิบายสีหมุด (legend) */
+export function mapLegend(){
+  const d = document.createElement('div');
+  d.className = 'map-legend'; d.setAttribute('aria-label', 'คำอธิบายสีหมุด');
+  d.innerHTML = Object.values(KINDS).map(k => `<span><i style="background:${k.color}"></i>${k.label}</span>`).join('');
+  return d;
 }
 
 export function clusterGroup(){

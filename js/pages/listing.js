@@ -16,7 +16,7 @@ import { icon } from '../ui/icons.js';
 import { statusEl, chip, priceEl, imgEl, favButton, listingCard, emptyState, listingHref } from '../ui/components.js';
 import { openLightbox } from '../ui/lightbox.js';
 import { loanWidget } from '../ui/loan.js';
-import { ensureLeaflet, monoTiles, newMap, pricePinIcon, approxCircle } from '../ui/map.js';
+import { ensureLeaflet, monoTiles, newMap, thumbPinIcon, approxCircle } from '../ui/map.js';
 
 export function mount(root, { id }){
   let shownId = null;   // วาดแล้ว → อัปเดต real-time ไม่วาดใหม่ (กันแกลเลอรี/ฟอร์มที่พิมพ์ค้างรีเซ็ต)
@@ -178,7 +178,7 @@ export function mount(root, { id }){
       if (!mapBox.isConnected || miniMap) return;
       miniMap = newMap(mapBox, { layers:[ monoTiles() ], scrollWheelZoom:false, dragging: !L.Browser.mobile, tap:false }).setView([pc.lat, pc.lng], pc.approx ? 15 : 16);
       if (pc.approx) approxCircle(pc, it, true).addTo(miniMap);
-      else L.marker([pc.lat, pc.lng], { icon: pricePinIcon(it, true), keyboard:false, interactive:false }).addTo(miniMap);
+      else L.marker([pc.lat, pc.lng], { icon: thumbPinIcon(it, true), keyboard:false, interactive:false }).addTo(miniMap);
     }).catch(() => {});
     return card;
   }

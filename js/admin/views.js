@@ -9,7 +9,7 @@ import { effectivePinned, pinnedUntilMs_ } from '../data/listings.js';
 import { loadTypes } from '../data/firebase.js';
 import { icon } from '../ui/icons.js';
 import { statusEl, chip, imgEl, countUp, countSpan, emptyState } from '../ui/components.js';
-import { hasLeaflet, monoTiles, newMap, pricePinIcon, TH_CENTER } from '../ui/map.js';
+import { hasLeaflet, monoTiles, newMap, thumbPinIcon, TH_CENTER } from '../ui/map.js';
 import { admin, emit } from './store.js';
 import { openEditor } from './editor.js';
 import { driveToolsCard } from './media.js';
@@ -287,7 +287,7 @@ export function listings(root){
     const bounds = [];
     items.forEach(it => {
       if (it.lat && it.lng){   // แอดมินเห็นพิกัดจริง (เหมือนแผนที่ในแอดมินเดิม)
-        const mk = L.marker([it.lat, it.lng], { icon: pricePinIcon(it), title: it.title || '' });
+        const mk = L.marker([it.lat, it.lng], { icon: thumbPinIcon(it), title: it.title || '' });
         mk.on('click', () => openEditor(it));
         mapLayer.addLayer(mk);
         bounds.push([it.lat, it.lng]);
