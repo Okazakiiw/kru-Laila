@@ -60,6 +60,31 @@
   ========================================================================= */
   const baht = (n) => (n!=='' && n!=null && !isNaN(+n)) ? Number(n).toLocaleString('th-TH') + ' บาท' : '-';
   const num  = (v) => (v===''||v==null||isNaN(+v)) ? '' : Number(v);
+  /* ราคาต่อพื้นที่: ที่ดิน → บาท/ตร.วา, บ้าน/คอนโด → บาท/ตร.ม. (เฉพาะราคาขายแบบราคารวม) */
+  function pricePerArea(it){
+    const p = +it.price;
+    if (!p || it.listingMode === 'rent') return '';
+    const unit = String(it.priceUnit || '');
+    if (/ต่อ(ตารางวา|ไร่|ห้อง|เดือน)/.test(unit)) return '';   // ราคาที่เป็นต่อหน่วยอยู่แล้ว
+    const fmt = (v) => Math.round(v).toLocaleString('th-TH');
+    if (+it.landSize > 0 && (!+it.usableArea || /ที่ดิน/.test(it.type || ''))) return `≈ ${fmt(p / +it.landSize)} บาท/ตร.วา`;
+    if (+it.usableArea > 0) return `≈ ${fmt(p / +it.usableArea)} บาท/ตร.ม.`;
+    return '';
+  }
+  /* คัดลอกข้อความ — มี fallback สำหรับ browser/HTTP ที่ไม่มี navigator.clipboard (เช่น LINE in-app browser บางรุ่น) */
+  function copyText(text){
+    const ok = () => toast('คัดลอกลิงก์แล้ว','success');
+    const fallback = () => {
+      try{
+        const ta = create('textarea', { style:{ position:'fixed', opacity:'0', top:'0' } });
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        const done = document.execCommand('copy'); ta.remove();
+        done ? ok() : window.prompt('คัดลอกลิงก์นี้:', text);
+      }catch{ window.prompt('คัดลอกลิงก์นี้:', text); }
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(ok, fallback);
+    else fallback();
+  }
   const mapLink = (lat,lng)=> `https://www.google.com/maps?q=${encodeURIComponent(lat+','+lng)}`;
   const parseGmapLink = (url)=>{
     try{
@@ -131,6 +156,17 @@
     const dLat = (dist * Math.cos(ang)) / 111320;
     const dLng = (dist * Math.sin(ang)) / (111320 * Math.cos(+lat * Math.PI / 180));
     return { lat:+(+lat + dLat).toFixed(6), lng:+(+lng + dLng).toFixed(6) };
+  }
+
+  /* พิกัดที่ "แสดงต่อสาธารณะ" ได้: ถ้าเป็นตำแหน่งไม่ชัด ใช้จุดสุ่ม (dispLat/dispLng) เสมอ
+     ห้ามใช้ it.lat/it.lng ตรง ๆ ในหน้า public — เดิมการคลิกการ์ด/ค้นหาจะ flyTo ไปจุดจริง (หลุดตำแหน่ง) */
+  function publicCoords(it){
+    if (!it || !it.lat || !it.lng) return null;
+    if (it.approxLocation){
+      if (it.dispLat != null && it.dispLng != null) return { lat:+it.dispLat, lng:+it.dispLng, approx:true };
+      return null;   // approx แต่ยังไม่มีจุดสุ่ม → ไม่โชว์บนแผนที่ดีกว่าโชว์จุดจริง
+    }
+    return { lat:+it.lat, lng:+it.lng, approx:false };
   }
 
   /* =========================================================================
@@ -451,7 +487,7 @@
     const detail  = byId('detailPanel');
     const fltType = byId('fltType'), fltMin = byId('fltMin'), fltMax = byId('fltMax');
     const fltMode = byId('fltMode'), fltStatus = byId('fltStatus'), fltSort = byId('fltSort');
-    const fltSearch = byId('fltSearch');
+    const fltSearch = byId('fltSearch'), fltBeds = byId('fltBeds');
     const addrQuery = byId('addrQuery'), addrBtn = byId('addrSearch'), addrRes = byId('addrResults');
     const loadMoreWrap = byId('loadMoreWrap'), loadMoreBtn = byId('loadMoreBtn');
     const favToggle = byId('favToggle'), favCountEl = byId('favCount');
@@ -468,19 +504,28 @@
     let allItems = [];
     let visibleCount = 12;
     let favOnly = false;          // กรองเฉพาะรายการโปรด
+    let openId = null;            // id ของประกาศที่เปิดแผงรายละเอียดอยู่
     const PAGE = 12;
+
+    /* canonical (เดิม href="" ว่าง) */
+    const canon = byId('canonicalLink');
+    if (canon) canon.setAttribute('href', location.origin + location.pathname);
 
     function updateFavCount(){ if (favCountEl) favCountEl.textContent = getFavs().length; }
     updateFavCount();
 
-    /* Real-time listings */
+    /* Real-time listings
+       - ครั้งแรก: render + fitBounds + เปิด deep link
+       - ครั้งถัดไป (เช่น มีคนอื่นกดดู → views +1): render เงียบ ๆ ไม่ขยับแผนที่ และไม่ re-render
+         แผงรายละเอียดที่เปิดอยู่ (เดิมแผนที่จะซูมออกเองและแกลเลอรีรีเซ็ตทุกครั้งที่มีคนเปิดดูประกาศ) */
+    let firstSnap = true;
     db.collection('listings').orderBy('createdAt','desc')
       .onSnapshot(snap => {
         allItems = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-        if (skel) skel.remove();
-        renderIndex();
-        // If user was on a deep-link, re-open after data loads
-        applyHashRoute();
+        if (skel && skel.isConnected) skel.remove();
+        renderIndex({ fit: firstSnap });
+        applyHashRoute({ fromData: true, first: firstSnap });
+        firstSnap = false;
       }, err => {
         console.error('listings onSnapshot:', err);
         if (skel) skel.remove();
@@ -497,16 +542,17 @@
       if (!q){ return; }
       const matches = allItems.filter(it => {
         if ((it.status||'available') === 'draft') return false;   // ไม่ค้นเจอฉบับร่าง
-        if (!(it.lat && it.lng)) return false;   // ต้องมีพิกัดถึงจะเลื่อนแผนที่ได้
-        const hay = (it.title + ' ' + (it.desc||'') + ' ' + (it.type||'')).toLowerCase();
-        return hay.includes(q);
+        if (!publicCoords(it)) return false;   // ต้องมีพิกัดถึงจะเลื่อนแผนที่ได้
+        return haystack(it).includes(q);
       });
       if (!matches.length){ addrRes.textContent = 'ไม่พบประกาศที่ตรงกับคำค้น'; return; }
       matches.slice(0, 10).forEach(it => {
-        const item = create('div', { class:'addr-item', role:'option',
-          text: it.title + (it.type ? ' · ' + it.type : ''),
+        const item = create('div', { class:'addr-item', role:'option', tabindex:'0',
+          text: (it.title||'-') + (it.type ? ' · ' + it.type : ''),
+          onkeydown: (e) => { if (e.key === 'Enter') item.click(); },
           onclick: () => {
-            map.flyTo([+it.lat, +it.lng], 16, { duration:.6 });
+            const c = publicCoords(it);
+            if (c) map.flyTo([c.lat, c.lng], c.approx ? 15 : 16, { duration:.6 });
             addrRes.innerHTML = '';
             navigateTo(`#/listing/${encodeURIComponent(it.id)}`);
           }
@@ -518,6 +564,10 @@
     addrQuery?.addEventListener('keydown', e => { if (e.key==='Enter') runAddrSearch(); });
 
     /* Filters */
+    // ข้อความสำหรับค้นหา (เดิม it.title ว่าง → ได้คำว่า "undefined" ปนเข้าไป)
+    function haystack(it){
+      return `${it.title||''} ${it.desc||''} ${it.type||''}`.toLowerCase();
+    }
     function passFilter(it){
       if ((it.status||'available') === 'draft') return false;   // ฉบับร่าง = ไม่โชว์บนเว็บ public
       if (favOnly && !isFav(it.id)) return false;
@@ -526,12 +576,10 @@
       if (fltStatus?.value && (it.status || 'available') !== fltStatus.value) return false;
       if (fltMin?.value && +it.price < +fltMin.value) return false;
       if (fltMax?.value && +it.price > +fltMax.value) return false;
+      if (fltBeds?.value && (+it.bedrooms || 0) < +fltBeds.value) return false;
       if (fltSearch?.value){
         const q = fltSearch.value.trim().toLowerCase();
-        if (q){
-          const hay = (it.title + ' ' + (it.desc||'') + ' ' + (it.type||'')).toLowerCase();
-          if (!hay.includes(q)) return false;
-        }
+        if (q && !haystack(it).includes(q)) return false;
       }
       return true;
     }
@@ -612,9 +660,18 @@
       if (cardDate) content.appendChild(create('div', { class:'small muted', text: '📅 ' + cardDate }));
 
       card.appendChild(content);
-      card.addEventListener('click', () => {
+      // เข้าถึงด้วยคีย์บอร์ดได้ (Tab → Enter)
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', (it.title || 'ประกาศ') + ' — ดูรายละเอียด');
+      const openThis = () => {
         navigateTo(`#/listing/${encodeURIComponent(it.id)}`);
-        if (it.lat && it.lng) map.flyTo([it.lat, it.lng], 15, { duration:.6 });
+        const c = publicCoords(it);   // ตำแหน่งไม่ชัด → บินไปจุดแสดงผล ไม่ใช่จุดจริง
+        if (c) map.flyTo([c.lat, c.lng], c.approx ? 14 : 15, { duration:.6 });
+      };
+      card.addEventListener('click', openThis);
+      card.addEventListener('keydown', (e) => {
+        if (e.target === card && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); openThis(); }
       });
 
       return card;
@@ -726,6 +783,10 @@
       if (it.priceUnit) price.appendChild(create('span', { class:'unit', text:'· '+it.priceUnit }));
       body.appendChild(price);
 
+      // ราคาเฉลี่ยต่อพื้นที่ (ช่วยเทียบราคาระหว่างประกาศ) — คิดเฉพาะราคาขายที่เป็นราคารวม
+      const ppa = pricePerArea(it);
+      if (ppa) body.appendChild(create('div', { class:'small muted', text: ppa }));
+
       // type line
       body.appendChild(create('div', { class:'small', text: (it.type||'-') }));
 
@@ -751,13 +812,11 @@
       }
 
       const actions = create('div', { class:'detail-actions' });
-      if (it.lat && it.lng){
-        // approx → ใช้จุดแสดงผล (สุ่ม) ไม่เปิดพิกัดจริง
-        const lLat = (it.approxLocation && it.dispLat != null) ? it.dispLat : it.lat;
-        const lLng = (it.approxLocation && it.dispLng != null) ? it.dispLng : it.lng;
+      const pc = publicCoords(it);   // approx → ใช้จุดแสดงผล (สุ่ม) ไม่เปิดพิกัดจริง
+      if (pc){
         actions.appendChild(create('a', { class:'btn btn-secondary',
-          href: mapLink(lLat,lLng), target:'_blank', rel:'noopener',
-          text: it.approxLocation ? '🗺️ ดูทำเลโดยประมาณ' : '🗺️ เปิด Google Maps' }));
+          href: mapLink(pc.lat, pc.lng), target:'_blank', rel:'noopener',
+          text: pc.approx ? '🗺️ ดูทำเลโดยประมาณ' : '🗺️ เปิด Google Maps' }));
       }
       if (it.price && !isRent){
         actions.appendChild(create('button', { class:'btn btn-secondary', text:'🧮 คำนวณค่างวด',
@@ -774,30 +833,126 @@
         if (favOnly && !on) renderIndex();
       });
       actions.appendChild(detFav);
-      // copy link
-      actions.appendChild(create('button', { class:'btn btn-ghost', text:'🔗 คัดลอกลิงก์',
-        onclick: () => {
-          const url = location.origin + location.pathname + '#/listing/' + encodeURIComponent(it.id);
-          navigator.clipboard?.writeText(url).then(()=> toast('คัดลอกลิงก์แล้ว','success'),
-                                                     ()=> toast('คัดลอกไม่สำเร็จ','error'));
-        }
+      // share — มือถือใช้แผ่นแชร์ของระบบ (LINE/FB/Messenger ได้ในคลิกเดียว) · คอมฯ คัดลอกลิงก์
+      const listingUrl = location.origin + location.pathname + '#/listing/' + encodeURIComponent(it.id);
+      if (navigator.share){
+        actions.appendChild(create('button', { class:'btn btn-ghost', type:'button', text:'📤 แชร์',
+          onclick: () => navigator.share({ title: it.title || 'ประกาศ', text: (it.title||'') + ' — ' + baht(it.price), url: listingUrl })
+                          .catch(()=>{ /* ผู้ใช้กดยกเลิก */ })
+        }));
+      }
+      actions.appendChild(create('a', { class:'btn btn-ghost',
+        href: 'https://social-plugins.line.me/lineit/share?url=' + encodeURIComponent(listingUrl),
+        target:'_blank', rel:'noopener', text:'💚 แชร์ LINE' }));
+      actions.appendChild(create('button', { class:'btn btn-ghost', type:'button', text:'🔗 คัดลอกลิงก์',
+        onclick: () => copyText(listingUrl)
       }));
       body.appendChild(actions);
 
       // contact bar
       body.appendChild(contactBarFor(it));
 
+      // ฟอร์มสอบถาม/นัดดู → เก็บใน Firestore /leads ให้แอดมินเห็นในหน้า admin
+      if ((it.status || 'available') !== 'sold') body.appendChild(leadFormFor(it));
+
+      // ประกาศใกล้เคียง (ประเภทเดียวกัน ราคาใกล้กัน)
+      const sim = similarFor(it);
+      if (sim) body.appendChild(sim);
+
       detail.appendChild(body);
       detail.hidden = false;
+      detail.scrollTop = 0;
       col.classList.add('has-detail');
+      openId = it.id;
+      // จอเล็ก: แผงรายละเอียดอยู่ใต้แผนที่ → เลื่อนให้เห็นทันที
+      if (window.matchMedia && window.matchMedia('(max-width:900px)').matches){
+        col.scrollIntoView({ behavior:'smooth', block:'start' });
+      }
 
       // SEO: update title + OG image when opening
       document.title = `${it.title || 'ประกาศ'} | ครูไลลาขายบ้านและที่ดิน`;
       const first = getImageURLs(it)[0];
       const og = byId('ogImage'); if (og && first) og.setAttribute('content', first);
     }
+    /* ประกาศใกล้เคียง: ประเภทเดียวกัน + โหมดเดียวกัน ไม่รวมฉบับร่าง/ขายแล้ว เรียงตามราคาที่ใกล้ที่สุด */
+    function similarFor(it){
+      const mode = it.listingMode || 'sale';
+      const p = +it.price || 0;
+      const pool = allItems.filter(x => x.id !== it.id
+        && x.type === it.type
+        && (x.listingMode || 'sale') === mode
+        && !['draft','sold'].includes(x.status || 'available'));
+      if (!pool.length) return null;
+      pool.sort((a,b) => Math.abs((+a.price||0) - p) - Math.abs((+b.price||0) - p));
+      const box = create('div', { class:'similar-box' });
+      box.appendChild(create('div', { class:'similar-title', text:'🏘️ ประกาศใกล้เคียง' }));
+      pool.slice(0, 4).forEach(x => {
+        const url = getImageURLs(x)[0];
+        const row = create('a', { class:'similar-row', href:'#/listing/' + encodeURIComponent(x.id) });
+        row.appendChild(url ? create('img', { src:url, alt:'', loading:'lazy' })
+                            : create('span', { class:'similar-ph', text:'🏠' }));
+        const txt = create('div', { class:'similar-txt' });
+        txt.appendChild(create('div', { class:'similar-name', text: x.title || '-' }));
+        txt.appendChild(create('div', { class:'small muted', text: baht(x.price) + (x.priceUnit ? ' · ' + x.priceUnit : '') }));
+        row.appendChild(txt);
+        box.appendChild(row);
+      });
+      return box;
+    }
+
+    /* ฟอร์มสอบถาม/นัดดูทรัพย์ → /leads (ต้องใช้ Firestore Rules เวอร์ชันใหม่ใน firestore.rules) */
+    function leadFormFor(it){
+      const wrap = create('details', { class:'lead-box' });
+      wrap.appendChild(create('summary', { text:'📝 สนใจประกาศนี้ — ฝากข้อมูลให้ติดต่อกลับ' }));
+      const form = create('form', { class:'lead-form', novalidate:'' });
+      const name  = create('input', { class:'input', name:'name', maxlength:'100', placeholder:'ชื่อ *', autocomplete:'name', required:'' });
+      const phone = create('input', { class:'input', name:'phone', maxlength:'30', placeholder:'เบอร์โทร หรือ LINE ID *', autocomplete:'tel', inputmode:'tel', required:'' });
+      const msg   = create('textarea', { class:'input', name:'message', maxlength:'1000', rows:'3', placeholder:'ข้อความ เช่น อยากนัดดูวันเสาร์ / สอบถามเรื่องสินเชื่อ' });
+      // honeypot กันบอท: ช่องที่คนมองไม่เห็น ถ้ามีค่า = บอท
+      const hp = create('input', { class:'hp-field', name:'website', tabindex:'-1', autocomplete:'off', 'aria-hidden':'true' });
+      const consent = create('label', { class:'small lead-consent' });
+      const consentChk = create('input', { type:'checkbox', required:'' });
+      consent.appendChild(consentChk);
+      consent.appendChild(document.createTextNode(' ยินยอมให้ใช้ชื่อและเบอร์ติดต่อนี้เพื่อติดต่อกลับเรื่องประกาศนี้เท่านั้น (PDPA)'));
+      const send = create('button', { class:'btn', type:'submit', text:'ส่งข้อมูล' });
+      [name, phone, msg, hp, consent, send].forEach(el => form.appendChild(el));
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (hp.value) return;   // บอท — เงียบ ๆ
+        const n = name.value.trim(), ph = phone.value.trim();
+        if (!n || !ph) return toast('กรอกชื่อและเบอร์/LINE ก่อน','warn');
+        if (!consentChk.checked) return toast('กรุณาติ๊กยินยอมก่อนส่ง','warn');
+        const LKEY = 'krulaila:lastLead';
+        let last = 0; try { last = +localStorage.getItem(LKEY) || 0; } catch {}
+        if (Date.now() - last < 60000) return toast('ส่งแล้ว กรุณารอสักครู่ก่อนส่งอีกครั้ง','warn');
+        send.disabled = true;
+        try{
+          await db.collection('leads').add({
+            listingId: String(it.id),
+            listingTitle: String(it.title || '').slice(0, 200),
+            name: n.slice(0, 100),
+            contact: ph.slice(0, 30),
+            message: msg.value.trim().slice(0, 1000),
+            handled: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          try { localStorage.setItem(LKEY, String(Date.now())); } catch {}
+          form.reset();
+          wrap.open = false;
+          toast('ส่งข้อมูลแล้ว ครูไลลาจะติดต่อกลับโดยเร็ว 🙏','success',4000);
+        }catch(err){
+          console.error('lead:', err);
+          // ยังไม่ได้อัปเดต Rules → แนะนำช่องทางอื่นแทน
+          toast('ส่งไม่สำเร็จ — กรุณาติดต่อทางโทรศัพท์หรือ LINE ด้านบน','error',5000);
+        }finally{ send.disabled = false; }
+      });
+      wrap.appendChild(form);
+      return wrap;
+    }
+
     function closeDetail(){
       const col = detail?.parentElement;
+      openId = null;
       if (!detail || !col) return;
       detail.hidden = true;
       detail.innerHTML = '';
@@ -810,8 +965,12 @@
       if (e.target === detail.parentElement) closeDetail();
     });
 
-    /* Render listings */
-    function renderIndex(){
+    /* Render listings
+       - แผนที่แสดงหมุด "ทุกประกาศที่ผ่านตัวกรอง" (เดิมแสดงแค่ 12 รายการแรกของหน้า → ประกาศหน้าถัดไปหายจากแผนที่)
+       - รายการด้านข้างแบ่งหน้าเหมือนเดิม
+       - fitBounds เฉพาะตอนโหลดครั้งแรก/เปลี่ยนตัวกรอง (เดิม fit ทุกครั้ง → แผนที่กระโดดตอนกด "โหลดเพิ่ม" หรือมีคนดูประกาศ) */
+    function renderIndex(opts){
+      opts = opts || {};
       const filtered = sortItems(allItems.filter(passFilter));
       cluster.clearLayers();
       circlesLayer.clearLayers();
@@ -819,14 +978,14 @@
 
       const slice = filtered.slice(0, visibleCount);
       const bounds = [];
-      slice.forEach(it => {
+      filtered.forEach(it => {
         const urls = getImageURLs(it);
         const firstURL = urls[0] || '';
-        if (it.lat && it.lng){
-          if (it.approxLocation){
+        const pc = publicCoords(it);
+        if (pc){
+          if (pc.approx){
             // ตำแหน่งไม่ชัด → วงรัศมีรอบ "จุดแสดงผลที่สุ่มไว้" (dispLat/dispLng) ไม่ใช่พิกัดจริง
-            const cLat = (it.dispLat != null) ? it.dispLat : it.lat;
-            const cLng = (it.dispLng != null) ? it.dispLng : it.lng;
+            const cLat = pc.lat, cLng = pc.lng;
             const circle = L.circle([cLat, cLng], {
               radius: +it.approxRadius || 300,
               color:'#2563eb', weight:1.5, fillColor:'#2563eb', fillOpacity:.15
@@ -841,7 +1000,7 @@
             circlesLayer.addLayer(circle);
             bounds.push([cLat, cLng]);
           } else {
-            const mk = L.marker([it.lat, it.lng], { icon: iconThumb(firstURL, it.status==='sold') });
+            const mk = L.marker([pc.lat, pc.lng], { icon: iconThumb(firstURL, it.status==='sold'), title: it.title || '' });
             if (firstURL){
               mk.bindTooltip(
                 `<div class="tt-title">${escapeHTML(it.title||'')}</div><img src="${escapeHTML(firstURL)}" alt="" loading="lazy">`,
@@ -850,19 +1009,27 @@
             }
             mk.on('click', () => navigateTo(`#/listing/${encodeURIComponent(it.id)}`));
             cluster.addLayer(mk);
-            bounds.push([it.lat, it.lng]);
+            bounds.push([pc.lat, pc.lng]);
           }
         }
-        listEl.appendChild(buildCard(it));
       });
+      slice.forEach(it => listEl.appendChild(buildCard(it)));
 
-      if (bounds.length){
+      if (opts.fit && bounds.length){
         try { map.fitBounds(bounds, { padding:[20,20], maxZoom:15 }); } catch{}
       }
 
+      // จำนวนผลลัพธ์
+      const countEl = byId('resultCount');
+      if (countEl) countEl.textContent = filtered.length ? `พบ ${filtered.length.toLocaleString('th-TH')} ประกาศ` : '';
+
       // empty state
       if (!filtered.length){
-        listEl.appendChild(create('div', { class:'card glass', text:'— ไม่พบประกาศที่ตรงตามเงื่อนไข —' }));
+        const empty = create('div', { class:'card glass empty-state' });
+        empty.appendChild(create('div', { text:'— ไม่พบประกาศที่ตรงตามเงื่อนไข —' }));
+        empty.appendChild(create('button', { class:'btn btn-ghost', type:'button', text:'ล้างตัวกรอง',
+          onclick: () => byId('clearFilter')?.click() }));
+        listEl.appendChild(empty);
       }
       // load more
       if (filtered.length > slice.length){
@@ -873,39 +1040,59 @@
     }
 
     /* Filter events */
-    [fltType, fltMode, fltStatus, fltSort].forEach(el => el?.addEventListener('change', () => { visibleCount = PAGE; renderIndex(); }));
-    [fltMin, fltMax, fltSearch].forEach(el => el?.addEventListener('input', debounce(() => { visibleCount = PAGE; renderIndex(); }, 200)));
-    byId('applyFilter')?.addEventListener('click', () => { visibleCount = PAGE; renderIndex(); });
+    const refilter = () => { visibleCount = PAGE; renderIndex({ fit:true }); };
+    [fltType, fltMode, fltStatus, fltSort, fltBeds].forEach(el => el?.addEventListener('change', refilter));
+    [fltMin, fltMax, fltSearch].forEach(el => el?.addEventListener('input', debounce(refilter, 250)));
+    byId('applyFilter')?.addEventListener('click', refilter);
     byId('clearFilter')?.addEventListener('click', () => {
-      [fltType, fltMin, fltMax, fltMode, fltStatus, fltSearch].forEach(el => { if (el) el.value=''; });
+      [fltType, fltMin, fltMax, fltMode, fltStatus, fltSearch, fltBeds].forEach(el => { if (el) el.value=''; });
       if (fltSort) fltSort.value = 'new';
       favOnly = false; favToggle?.classList.remove('active'); favToggle?.setAttribute('aria-pressed','false');
-      visibleCount = PAGE;
-      renderIndex();
+      refilter();
     });
     favToggle?.addEventListener('click', () => {
       favOnly = !favOnly;
       favToggle.classList.toggle('active', favOnly);
       favToggle.setAttribute('aria-pressed', String(favOnly));
-      visibleCount = PAGE;
-      renderIndex();
+      refilter();
     });
     loadMoreBtn?.addEventListener('click', () => { visibleCount += PAGE; renderIndex(); });
 
     /* Hash router */
     function navigateTo(hash){ if (location.hash !== hash) location.hash = hash; else applyHashRoute(); }
-    function applyHashRoute(){
+    function applyHashRoute(opts){
+      opts = opts || {};
       const h = location.hash || '';
       const m = h.match(/^#\/listing\/(.+)$/);
       if (m){
         const id = decodeURIComponent(m[1]);
-        const it = allItems.find(x => x.id === id);
-        if (it) openDetail(it);
-      } else {
+        // ข้อมูลอัปเดตแบบ real-time ระหว่างที่แผงเปิดอยู่ → ไม่ต้องวาดใหม่ (กันแกลเลอรี/ฟอร์มที่พิมพ์ค้างรีเซ็ต)
+        // ฉบับร่างเปิดผ่านลิงก์ตรงไม่ได้ (เดิมเปิดได้ถ้ารู้ id)
+        const it = allItems.find(x => x.id === id && (x.status || 'available') !== 'draft');
+        if (it && opts.fromData && openId === id) return;
+        if (it){
+          openDetail(it);
+          if (opts.first){   // เปิดจากลิงก์แชร์ → เลื่อนแผนที่ไปที่ประกาศด้วย
+            const c = publicCoords(it);
+            if (c) map.setView([c.lat, c.lng], c.approx ? 14 : 15);
+          }
+        } else if (opts.first || !opts.fromData || openId === id){
+          closeDetail();
+          toast('ไม่พบประกาศนี้ อาจถูกลบหรือปิดการขายไปแล้ว','warn',4000);
+        }
+      } else if (!opts.fromData){
         closeDetail();
       }
     }
-    window.addEventListener('hashchange', applyHashRoute);
+    window.addEventListener('hashchange', () => applyHashRoute());
+
+    /* Esc ปิดแผงรายละเอียด (ถ้าไม่มี lightbox/modal เปิดอยู่) */
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const lb = byId('lightbox'), loan = byId('loanModal');
+      if ((lb && !lb.hidden) || (loan && !loan.hidden)) return;
+      if (detail && !detail.hidden) closeDetail();
+    });
 
     /* Apply site settings to topbar/footer */
     function applySiteToIndex(){
@@ -988,6 +1175,7 @@
     const m = byId('loanModal'); if (!m) return;
     byId('loanClose')?.addEventListener('click', () => m.hidden = true);
     m.addEventListener('click', e => { if (e.target === m) m.hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !m.hidden) m.hidden = true; });
     ['loanPrice','loanDown','loanRate','loanYears'].forEach(id => {
       byId(id)?.addEventListener('input', recalcLoan);
     });
@@ -1003,9 +1191,10 @@
   }
   function recalcLoan(){
     const price = +byId('loanPrice').value || 0;
-    const downPct = +byId('loanDown').value || 0;
-    const rate = +byId('loanRate').value || 0;
-    const years = +byId('loanYears').value || 0;
+    // clamp ค่าที่กรอกเกินช่วง (เดิมดาวน์ 120% → วงเงินกู้ติดลบ)
+    const downPct = Math.min(100, Math.max(0, +byId('loanDown').value || 0));
+    const rate = Math.max(0, +byId('loanRate').value || 0);
+    const years = Math.min(40, Math.max(0, +byId('loanYears').value || 0));
     const out = byId('loanResult'); if (!out) return;
     if (!price || !years){
       out.innerHTML = '<div class="small muted">กรอกราคาและระยะเวลาเพื่อคำนวณ</div>';
@@ -1074,13 +1263,76 @@
         adminBox.hidden = false;
         if (who){ who.hidden = false; who.textContent = user.email; }
         if (logout) logout.hidden = false;
+        const ae = byId('adminEmail'), au = byId('adminUid');
+        if (ae) ae.textContent = user.email || '-';
+        if (au) au.textContent = user.uid;
+        const cb = byId('copyUidBtn');
+        if (cb && !cb.dataset.bound){ cb.dataset.bound = '1'; cb.addEventListener('click', () => copyText(user.uid)); }
         initAdmin();
       } else {
         loginBox.hidden = false;
         adminBox.hidden = true;
         if (who) who.hidden = true;
         if (logout) logout.hidden = true;
+        // ออกจากระบบแล้วล็อกอินใหม่ → ต้อง init ใหม่ (เดิม _adminInited ค้างเป็น true
+        // ทำให้ listener เดิมยังผูกอยู่กับ session เก่า และ onSnapshot ที่ถูกตัดสิทธิ์ไม่ถูกเปิดใหม่)
+        if (_adminInited) location.reload();
       }
+    });
+  }
+
+  /* =========================================================================
+     Admin: กล่องลูกค้าที่สนใจ (/leads)
+  ========================================================================= */
+  function initLeads(){
+    const list = byId('leadsList'), badge = byId('leadsBadge'), showHandled = byId('leadsShowHandled');
+    if (!list) return;
+    let leads = [];
+    const fmt = (ts) => {
+      const ms = ts && typeof ts.toDate === 'function' ? ts.toDate().getTime() : null;
+      return ms ? new Date(ms).toLocaleString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+    };
+    function render(){
+      const pending = leads.filter(l => !l.handled).length;
+      if (badge){ badge.hidden = !pending; badge.textContent = pending + ' ใหม่'; }
+      const rows = leads.filter(l => showHandled?.checked || !l.handled);
+      list.innerHTML = '';
+      if (!rows.length){ list.textContent = pending ? '' : '— ยังไม่มีข้อความใหม่ —'; return; }
+      rows.forEach(l => {
+        const row = create('div', { class:'lead-row' + (l.handled ? ' handled' : '') });
+        const head = create('div', { class:'lead-head' });
+        head.appendChild(create('b', { text: l.name || '-' }));
+        const c = String(l.contact || '');
+        const tel = /^[\d\s+\-()]{6,}$/.test(c) ? safePhoneTel(c) : '';
+        head.appendChild(tel ? create('a', { href: tel, text: '📞 ' + c }) : create('span', { text: '💬 ' + c }));
+        head.appendChild(create('span', { class:'muted', text: fmt(l.createdAt) }));
+        row.appendChild(head);
+        if (l.listingId){
+          row.appendChild(create('a', { class:'small', href: 'index.html#/listing/' + encodeURIComponent(l.listingId), target:'_blank', rel:'noopener',
+            text: '🏠 ' + (l.listingTitle || 'ดูประกาศ') }));
+        }
+        if (l.message) row.appendChild(create('div', { class:'lead-msg', text: l.message }));
+        const act = create('div', { class:'btn-row' });
+        act.appendChild(create('button', { class:'btn btn-ghost small', type:'button',
+          text: l.handled ? '↩️ ทำเครื่องหมายว่ายังไม่ติดต่อ' : '✅ ติดต่อแล้ว',
+          onclick: () => db.collection('leads').doc(l.id).update({ handled: !l.handled })
+                           .catch(e => { console.error(e); toast('อัปเดตไม่สำเร็จ','error'); }) }));
+        act.appendChild(create('button', { class:'btn btn-ghost btn-danger small', type:'button', text:'ลบ',
+          onclick: () => { if (confirmDialog('ลบข้อความนี้? (ข้อมูลส่วนบุคคลจะถูกลบถาวร)'))
+            db.collection('leads').doc(l.id).delete().catch(e => { console.error(e); toast('ลบไม่สำเร็จ','error'); }); } }));
+        row.appendChild(act);
+        list.appendChild(row);
+      });
+    }
+    showHandled?.addEventListener('change', render);
+    db.collection('leads').orderBy('createdAt','desc').limit(200).onSnapshot(snap => {
+      leads = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+      render();
+    }, err => {
+      console.warn('leads:', err);
+      list.textContent = String(err).includes('permission')
+        ? 'ยังอ่านกล่องข้อความไม่ได้ — อัปเดต Firestore Rules จากไฟล์ firestore.rules (ดู README)'
+        : 'โหลดข้อความไม่สำเร็จ';
     });
   }
 
@@ -1162,6 +1414,15 @@
       if (chkEl){ chkEl.checked = true; chkEl.dataset.dispLat = j.lat; chkEl.dataset.dispLng = j.lng; }
       if (outEl) outEl.textContent = `จุดแสดงผล (สุ่มในรัศมี ${r} ม.): ${j.lat}, ${j.lng}`;
       toast(`สุ่มจุดแสดงผลแล้ว (รัศมี ${r} ม.) — พิกัดจริงไม่ถูกแก้`, 'success', 4000);
+    }
+    /* ตรวจพิกัด: ต้องใส่คู่กัน และอยู่ในช่วงที่ถูกต้อง (กันพิมพ์สลับ lat/lng แล้วหมุดไปโผล่กลางทะเล) */
+    function validCoords_(latEl, lngEl){
+      const la = num(latEl?.value), ln = num(lngEl?.value);
+      if (la === '' && ln === '') return true;
+      if (la === '' || ln === ''){ toast('ใส่ละติจูดและลองจิจูดให้ครบทั้งคู่ (หรือเว้นว่างทั้งคู่)','warn',4000); return false; }
+      // ไทย: lat ≈ 5–21, lng ≈ 97–106 → ถ้าใส่สลับกัน lat จะเกิน 90 และติดเงื่อนไขนี้
+      if (Math.abs(la) > 90 || Math.abs(ln) > 180){ toast('พิกัดไม่ถูกต้อง — อาจใส่ละติจูด/ลองจิจูดสลับกัน (ไทย: ละติจูด ~5–21, ลองจิจูด ~97–106)','warn',5000); return false; }
+      return true;
     }
     f_approxBtn?.addEventListener('click', () => applyJitter_(f_lat, f_lng, f_approxRadius, f_approxLoc, f_approxOut));
     e_approxBtn?.addEventListener('click', () => applyJitter_(e_lat, e_lng, e_approxRadius, e_approxLoc, e_approxOut));
@@ -1352,8 +1613,16 @@
     saveBtn?.addEventListener('click', async () => {
       const title = (f_title?.value||'').trim();
       if (!title) return toast('กรอกหัวข้อก่อน','warn');
+      if (!validCoords_(f_lat, f_lng)) return;
       saveBtn.disabled = true;
       try{
+        // อัปโหลดรูปจากเครื่อง "ก่อน" สร้างประกาศ — เดิมสร้างประกาศก่อนแล้วค่อยอัปโหลด
+        // ถ้าอัปโหลดพัง จะได้ประกาศไม่มีรูปค้างอยู่บนเว็บ และกดบันทึกซ้ำได้ประกาศซ้ำ
+        let uploaded = [];
+        if (add_files.length){
+          toast('กำลังอัปโหลดรูปจากเครื่อง…');
+          uploaded = await uploadToDrive(add_files);
+        }
         const meta = {
           title,
           type: f_type?.value || 'บ้าน',
@@ -1372,21 +1641,14 @@
           lat: num(f_lat?.value),
           lng: num(f_lng?.value),
           ...approxFields_(f_lat, f_lng, f_approxRadius, f_approxLoc),
-          imageObjs: _addImported.slice(),   // imported ใส่ทันที
+          imageObjs: _addImported.concat(uploaded).slice(0, 30),   // rules จำกัด 30 รูป
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
-        const docRef = await db.collection('listings').add(meta);
-
-        if (add_files.length){
-          toast('กำลังอัปโหลดรูปจากเครื่อง…');
-          const items = await uploadToDrive(add_files);
-          // merge ของจาก disk เข้ากับที่ import ไว้แล้ว
-          const merged = (_addImported || []).concat(items);
-          await docRef.update({ imageObjs: merged, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-        }
+        await db.collection('listings').add(meta);
 
         byId('listingForm')?.reset();
+        clearDisp_(f_approxLoc, f_approxOut);
         imgsPrev.innerHTML = '';
         f_importedPrev.innerHTML = '';
         add_files = [];
@@ -1421,23 +1683,35 @@
     /* Import */
     importBtn?.addEventListener('click', () => importFile?.click());
     importFile?.addEventListener('change', () => {
-      const f = importFile.files?.[0]; if (!f) return;
-      if (!confirmDialog('นำเข้าจะเพิ่มประกาศใหม่ตามไฟล์ (ไม่ลบของเดิม) — ดำเนินการต่อ?')) return;
+      const f = importFile.files?.[0];
+      importFile.value = '';   // reset — เดิมเลือกไฟล์เดิมซ้ำแล้ว change ไม่ทำงาน
+      if (!f) return;
       const r = new FileReader();
       r.onload = async (e) => {
+        let arr;
         try{
           const raw = JSON.parse(e.target.result || '{}');
-          const arr = Array.isArray(raw.items) ? raw.items : [];
-          for (const item of arr){
-            const { id:_drop, createdAt:_c, updatedAt:_u, ...fields } = item;
+          arr = (Array.isArray(raw.items) ? raw.items : Array.isArray(raw) ? raw : [])
+                  .filter(x => x && typeof x.title === 'string' && x.title.trim());
+        }catch(err){ console.error(err); return toast('ไฟล์ JSON ไม่ถูกต้อง','error'); }
+        if (!arr.length) return toast('ไม่พบประกาศในไฟล์ (ต้องมี items[] และแต่ละรายการมี title)','warn',4000);
+        if (!confirmDialog(`จะเพิ่มประกาศใหม่ ${arr.length} รายการ (ไม่ลบของเดิม; รายการที่ id ซ้ำกับที่มีอยู่จะข้าม) — ดำเนินการต่อ?`)) return;
+        const existing = new Set(adminItems.map(x => x.id));
+        let ok = 0, skip = 0, fail = 0;
+        for (const item of arr){
+          if (item.id && existing.has(item.id)){ skip++; continue; }   // กันนำเข้าไฟล์ backup ซ้ำแล้วประกาศเบิ้ล
+          const { id:_drop, createdAt:_c, updatedAt:_u, views:_v, pinnedUntil:_p, ...fields } = item;
+          try{
             await db.collection('listings').add({
               ...fields,
+              title: String(fields.title).slice(0, 200),
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-          }
-          toast('นำเข้าเรียบร้อย','success');
-        }catch(err){ console.error(err); toast('ไฟล์ไม่ถูกต้อง','error'); }
+            ok++;
+          }catch(err){ console.error('import item:', err); fail++; }
+        }
+        toast(`นำเข้า ${ok} รายการ` + (skip ? ` · ข้าม ${skip} (มีอยู่แล้ว)` : '') + (fail ? ` · ล้มเหลว ${fail}` : ''), fail ? 'warn' : 'success', 5000);
       };
       r.readAsText(f);
     });
@@ -1475,7 +1749,8 @@
           e_approxLoc.dataset.dispLat = it.dispLat; e_approxLoc.dataset.dispLng = it.dispLng;
         } else { delete e_approxLoc.dataset.dispLat; delete e_approxLoc.dataset.dispLng; }
       }
-      if (e_approxRadius && it.approxRadius) e_approxRadius.value = String(it.approxRadius);
+      // เดิมถ้าประกาศนี้ไม่มี approxRadius จะค้างค่าของประกาศที่เปิดก่อนหน้า
+      if (e_approxRadius) e_approxRadius.value = String(it.approxRadius || 300);
       if (e_approxOut) e_approxOut.textContent = (it.approxLocation && it.dispLat != null) ? `จุดแสดงผล: ${it.dispLat}, ${it.dispLng}` : '';
 
       // existing images — จัดเรียง / ตั้งเป็นปก / ลบ
@@ -1555,6 +1830,7 @@
 
     closeEdit?.addEventListener('click', () => editModal.hidden = true);
     editModal?.addEventListener('click', e => { if (e.target === editModal) editModal.hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && editModal && !editModal.hidden) editModal.hidden = true; });
 
     e_imgs?.addEventListener('change', () => {
       e_imgsPrev.innerHTML = '';
@@ -1633,6 +1909,8 @@
 
     e_updateBtn?.addEventListener('click', async () => {
       const id = (e_id.value||'').trim(); if (!id) return;
+      if (!(e_title.value||'').trim()) return toast('หัวข้อห้ามว่าง','warn');   // เดิมบันทึกหัวข้อว่างได้
+      if (!validCoords_(e_lat, e_lng)) return;
       e_updateBtn.disabled = true;
       try{
         const ref = db.collection('listings').doc(id);
@@ -1873,6 +2151,9 @@
       console.error(err);
       if (String(err).includes('permission')) rulesHint('โหลดรายการ');
     });
+
+    /* กล่องข้อความลูกค้า */
+    initLeads();
 
     /* Lightbox (admin can also use) */
     setupLightbox();

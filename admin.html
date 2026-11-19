@@ -68,12 +68,31 @@
       </div>
       <p class="small muted" style="margin-top:10px">
         ต้องสร้างบัญชีแอดมินใน Firebase Console → Authentication → Users ก่อนใช้งาน<br>
-        และต้องตั้ง Firestore Rules ให้เขียนได้เฉพาะ <code>request.auth != null</code>
+        และต้องเพิ่ม UID ของบัญชีนั้นใน Firestore → <code>admins/{UID}</code> ตาม <code>firestore.rules</code> (ดู README)
       </p>
     </section>
 
     <!-- ส่วนหลังล็อกอิน -->
     <section id="adminBox" hidden>
+
+      <!-- 📥 กล่องข้อความลูกค้าที่ส่งจากฟอร์ม "สนใจประกาศนี้" -->
+      <section class="card glass" id="leadsCard">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <h3 style="margin:0">📥 ลูกค้าที่สนใจ <span id="leadsBadge" class="badge badge-new" hidden></span></h3>
+          <label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="leadsShowHandled" /> แสดงรายการที่ติดต่อแล้ว
+          </label>
+        </div>
+        <div id="leadsList" class="leads-list small muted" style="margin-top:8px;">กำลังโหลด…</div>
+      </section>
+
+      <!-- บัญชีแอดมิน (ใช้ UID นี้ตั้งสิทธิ์ใน Firestore → collection admins) -->
+      <section class="card glass small" id="adminIdCard">
+        <b>บัญชีแอดมินที่ล็อกอินอยู่:</b> <span id="adminEmail"></span>
+        · UID: <code id="adminUid"></code>
+        <button type="button" id="copyUidBtn" class="btn btn-ghost small">คัดลอก UID</button>
+        <div class="muted" style="margin-top:4px">ใช้ UID นี้สร้างเอกสาร <code>admins/{UID}</code> ใน Firestore เพื่อให้สิทธิ์แก้ไข (ดู README หัวข้อ “ความปลอดภัย: จำกัดสิทธิ์แอดมิน”)</div>
+      </section>
 
       <!-- การตั้งค่าทั่วเว็บ -->
       <section class="card glass">

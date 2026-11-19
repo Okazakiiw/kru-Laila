@@ -61,6 +61,10 @@
         if (v === 'accept') window.__loadGA4();
       };
       if (!window.GA4_ID) return;
+      // มี GA4 → โชว์ปุ่ม "ตั้งค่า cookie" ในฟุตเตอร์ (ถ้าไม่มี GA4 ปุ่มนี้ไม่มีประโยชน์ จึงซ่อนไว้)
+      document.addEventListener('DOMContentLoaded', function(){
+        var w = document.getElementById('cookieSettingsWrap'); if (w) w.hidden = false;
+      });
       let v = null; try { v = localStorage.getItem(CKEY); } catch {}
       if (v === 'accept') window.__loadGA4();
       else if (v !== 'reject') document.addEventListener('DOMContentLoaded', window.__showConsent);
@@ -155,6 +159,16 @@
           <input id="fltMax" class="input" type="number" min="0" placeholder="ไม่จำกัด" inputmode="numeric" />
         </div>
         <div class="field">
+          <label for="fltBeds">ห้องนอน</label>
+          <select id="fltBeds" class="input">
+            <option value="">ไม่จำกัด</option>
+            <option value="1">1+ ห้อง</option>
+            <option value="2">2+ ห้อง</option>
+            <option value="3">3+ ห้อง</option>
+            <option value="4">4+ ห้อง</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="fltSort">เรียงตาม</label>
           <select id="fltSort" class="input">
             <option value="new">ใหม่สุด</option>
@@ -177,6 +191,7 @@
           <button id="applyFilter" class="btn">ใช้ตัวกรอง</button>
           <button id="clearFilter" class="btn btn-ghost">ล้าง</button>
           <button id="favToggle" class="btn btn-ghost" type="button" aria-pressed="false">❤️ รายการโปรด (<span id="favCount">0</span>)</button>
+          <span id="resultCount" class="small muted result-count" aria-live="polite"></span>
         </div>
       </div>
     </section>
@@ -205,7 +220,7 @@
     <div class="container">
       <div>© <span id="year"></span> ครูไลลาขายบ้านและที่ดิน</div>
       <div id="footerContact" class="footer-contact"></div>
-      <div><button type="button" class="btn btn-ghost small" onclick="try{localStorage.removeItem('krulaila:consent:analytics')}catch(e){};window.__showConsent&&window.__showConsent()">🍪 ตั้งค่า cookie</button></div>
+      <div id="cookieSettingsWrap" hidden><button type="button" class="btn btn-ghost small" onclick="try{localStorage.removeItem('krulaila:consent:analytics')}catch(e){};window.__showConsent&&window.__showConsent()">🍪 ตั้งค่า cookie</button></div>
     </div>
   </footer>
 

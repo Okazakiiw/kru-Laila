@@ -30,6 +30,9 @@ const CONFIG = {
   MAX_FILE_BYTES: 5 * 1024 * 1024,               // 5 MB ต่อรูป
   MAX_FILES_PER_REQUEST: 12,
   REQUIRE_AUTH: true,                             // ตั้ง false ได้ตอนทดสอบ แต่ production ให้ true
+  // 🔒 รายชื่อ UID แอดมินที่อนุญาต (ดู UID ในหน้า admin.html หลังล็อกอิน)
+  //    เว้นว่าง [] = ยอมรับทุกบัญชีที่ล็อกอินได้ (แบบเดิม — ไม่แนะนำ เพราะใครก็สมัครบัญชี Firebase เองได้)
+  ADMIN_UIDS: [],
 
   // 📘 Facebook Graph API — สำหรับฟีเจอร์ "นำเข้ารูปจาก FB"
   //   - ถ้าไม่ตั้งค่า ปุ่ม "ดึงจากโพสต์ / โพสต์ล่าสุด" จะไม่ทำงาน
@@ -107,6 +110,9 @@ function doPost(e) {
       if (!idToken) return out({ ok:false, error:'Missing idToken' });
       const verified = verifyFirebaseIdToken_(idToken);
       if (!verified.ok) return out({ ok:false, error:'Auth: ' + verified.error });
+      if (CONFIG.ADMIN_UIDS && CONFIG.ADMIN_UIDS.length && CONFIG.ADMIN_UIDS.indexOf(verified.uid) < 0) {
+        return out({ ok:false, error:'Auth: บัญชีนี้ไม่ใช่แอดมิน' });
+      }
     }
 
     if (data.action === 'upload')         return out(handleUpload_(data));
