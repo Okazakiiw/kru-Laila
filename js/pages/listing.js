@@ -54,7 +54,7 @@ export function mount(root, { id }){
     const urls = getImageURLs(it);
     const st = it.status || 'available';
     const mode = it.listingMode === 'rent' ? 'rent' : 'sale';
-    const listingUrl = baseUrl() + '#/listing/' + encodeURIComponent(it.id);
+    const listingUrl = location.origin + '/l/' + encodeURIComponent(it.id);   // ลิงก์แชร์: เซิร์ฟเวอร์ใส่ og:image ให้ Facebook/LINE อ่านได้ (/api/share.js)
 
     /* crumbs */
     root.appendChild(create('nav', { class:'crumbs', 'aria-label':'เส้นทาง' }, [
