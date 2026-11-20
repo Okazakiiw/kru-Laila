@@ -432,7 +432,7 @@ main{ display:block; min-height:50vh; }
 .gal-strip{ display:grid; grid-auto-flow:column; grid-auto-columns:100%; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; aspect-ratio:4/3; background:var(--inner); }
 .gal-strip::-webkit-scrollbar{ display:none; }
 .gal-strip button{ scroll-snap-align:start; border:0; padding:0; background:var(--inner); }
-.gal-strip img, .gal-strip .ph-empty{ width:100%; height:100%; object-fit:cover; }
+.gal-strip img, .gal-strip .ph-empty{ width:100%; height:100%; object-fit:contain; }
 .gal-m .gal-count{ position:absolute; right:var(--gutter); bottom:12px; }
 @media (min-width:768px){
   .gal-m{ display:none; }
