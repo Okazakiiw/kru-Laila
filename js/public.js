@@ -100,7 +100,7 @@ syncFavBadge();
 /* ── Contact links (topbar + footer) จาก meta/site ── */
 function applySite(){
   const s = store.settings;
-  const line = safeUrl(s.lineUrl), tel = safePhoneTel(s.phone), fb = safeUrl(s.facebookPage);
+  const line = safeUrl(s.lineUrl), tel = safePhoneTel(s.phone), fb = safeUrl(s.facebookPage), tt = safeUrl(s.tiktokUrl);
   const topLine = byId('topLine'), topCall = byId('topCall');
   if (line){ topLine.href = line; topLine.hidden = false; } else topLine.hidden = true;
   if (tel){ topCall.href = tel; topCall.removeAttribute('target'); }
@@ -110,6 +110,7 @@ function applySite(){
   if (s.phone && tel) fc.appendChild(create('a', { class:'btn btn-soft', href: tel }, [ icon('phone'), String(s.phone) ]));
   if (line) fc.appendChild(create('a', { class:'btn btn-soft', href: line, target:'_blank', rel:'noopener' }, [ icon('message-circle'), 'LINE' ]));
   if (fb) fc.appendChild(create('a', { class:'btn btn-soft', href: fb, target:'_blank', rel:'noopener' }, [ icon('facebook'), 'Facebook' ]));
+  if (tt) fc.appendChild(create('a', { class:'btn btn-soft', href: tt, target:'_blank', rel:'noopener' }, [ icon('tiktok'), 'TikTok' ]));
 }
 
 /* ── Boot ── */

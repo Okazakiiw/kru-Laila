@@ -381,10 +381,10 @@ export function settings(root){
     saveBtn.disabled = true;
     const ok = await saveSiteSettings({
       phone: F.phone.value, lineId: F.lineId.value, lineUrl: F.lineUrl.value, facebookPage: F.facebookPage.value,
-      messengerUrl: F.messengerUrl.value, aboutText: F.aboutText.value, pinDefaultDays: F.pinDefaultDays.value
+      messengerUrl: F.messengerUrl.value, tiktokUrl: F.tiktokUrl.value, aboutText: F.aboutText.value, pinDefaultDays: F.pinDefaultDays.value
     });
     saveBtn.disabled = false;
-    if (ok){ admin.settings = { ...admin.settings, ...{ phone:F.phone.value.trim(), lineId:F.lineId.value.trim(), lineUrl:F.lineUrl.value.trim(), facebookPage:F.facebookPage.value.trim(), messengerUrl:F.messengerUrl.value.trim(), aboutText:F.aboutText.value.trim(), pinDefaultDays: Math.max(0, parseInt(F.pinDefaultDays.value||'14', 10) || 0) } }; setDirty(false); }
+    if (ok){ admin.settings = { ...admin.settings, ...{ phone:F.phone.value.trim(), lineId:F.lineId.value.trim(), lineUrl:F.lineUrl.value.trim(), facebookPage:F.facebookPage.value.trim(), messengerUrl:F.messengerUrl.value.trim(), tiktokUrl:F.tiktokUrl.value.trim(), aboutText:F.aboutText.value.trim(), pinDefaultDays: Math.max(0, parseInt(F.pinDefaultDays.value||'14', 10) || 0) } }; setDirty(false); }
   });
   const user = admin.user || {};
   root.append(
@@ -396,7 +396,8 @@ export function settings(root){
           field('lineId', 'LINE ID', { placeholder:'@krulaila' }),
           field('lineUrl', 'LINE Add Link', { placeholder:'https://line.me/ti/p/~...', type:'url', full:true }),
           field('facebookPage', 'Facebook Page หลัก', { placeholder:'https://www.facebook.com/your-page', type:'url', full:true }),
-          field('messengerUrl', 'Messenger Link', { placeholder:'https://m.me/your-page', type:'url', full:true })
+          field('messengerUrl', 'Messenger Link', { placeholder:'https://m.me/your-page', type:'url', full:true }),
+          field('tiktokUrl', 'TikTok', { placeholder:'https://www.tiktok.com/@your-account', type:'url', full:true })
         ]) ]),
       create('section', { class:'card', 'aria-labelledby':'s2' }, [ create('h2', { id:'s2', class:'card-title', text:'หน้าเว็บ' }),
         create('div', { class:'fgrid', style:{ marginTop:'16px' } }, [

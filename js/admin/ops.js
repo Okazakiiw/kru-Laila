@@ -227,6 +227,7 @@ export async function saveSiteSettings(v){
       lineUrl: (v.lineUrl||'').trim(),
       facebookPage: (v.facebookPage||'').trim(),
       messengerUrl: (v.messengerUrl||'').trim(),
+      tiktokUrl: (v.tiktokUrl||'').trim(),
       aboutText: (v.aboutText||'').trim(),
       pinDefaultDays: Math.max(0, parseInt(v.pinDefaultDays||'14', 10) || 0),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()

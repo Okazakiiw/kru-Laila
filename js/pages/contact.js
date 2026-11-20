@@ -33,7 +33,7 @@ export function mount(root){
     const s = store.settings || {};
     about.textContent = (s.aboutText || '').trim() || 'ติดต่อโดยตรง ไม่ผ่านนายหน้าซ้ำซ้อน — โทร ทัก LINE หรือ Facebook ได้ทุกวัน';
     list.textContent = '';
-    const tel = safePhoneTel(s.phone), line = safeUrl(s.lineUrl), msgr = safeUrl(s.messengerUrl), fb = safeUrl(s.facebookPage);
+    const tel = safePhoneTel(s.phone), line = safeUrl(s.lineUrl), msgr = safeUrl(s.messengerUrl), fb = safeUrl(s.facebookPage), tt = safeUrl(s.tiktokUrl);
     if (tel) list.appendChild(row('phone', 'โทร', String(s.phone), tel, false));
     if (line) list.appendChild(row('message-circle', 'LINE', s.lineId ? String(s.lineId) : 'เพิ่มเพื่อน', line, true));
     else if (s.lineId) list.appendChild(create('button', { type:'button', class:'contact-row', style:{ border:'0', width:'100%', textAlign:'left', font:'inherit', cursor:'pointer' },
@@ -41,6 +41,7 @@ export function mount(root){
       create('span', {}, [ create('b', { text:'LINE ID' }), create('span', { class:'label', text:String(s.lineId) }) ]), icon('copy', 'go') ]));
     if (msgr) list.appendChild(row('send', 'Messenger', 'ส่งข้อความ', msgr, true));
     if (fb) list.appendChild(row('facebook', 'Facebook', 'เพจหลัก', fb, true));
+    if (tt) list.appendChild(row('tiktok', 'TikTok', 'ดูวิดีโอ', tt, true));
     if (!list.childNodes.length) list.appendChild(create('p', { class:'label', text:'ยังไม่ได้ตั้งค่าช่องทางติดต่อ' }));
   }
   render();

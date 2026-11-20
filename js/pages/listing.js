@@ -189,7 +189,8 @@ export function mount(root, { id }){
       tel: s.phone ? safePhoneTel(s.phone) : '',
       line: safeUrl(s.lineUrl),
       msgr: safeUrl(s.messengerUrl),
-      fb: safeUrl(it.fbUrl || s.facebookPage)
+      fb: safeUrl(it.fbUrl || s.facebookPage),
+      tt: safeUrl(s.tiktokUrl)
     };
   }
 
@@ -208,6 +209,7 @@ export function mount(root, { id }){
     if (c.line) grid.appendChild(create('a', { class:'btn btn-white', href:c.line, target:'_blank', rel:'noopener' }, [ icon('message-circle'), 'LINE' ]));
     if (c.msgr) grid.appendChild(create('a', { class:'btn btn-white', href:c.msgr, target:'_blank', rel:'noopener' }, [ icon('send'), 'Messenger' ]));
     if (c.fb)   grid.appendChild(create('a', { class:'btn btn-white', href:c.fb, target:'_blank', rel:'noopener' }, [ icon('facebook'), 'Facebook' ]));
+    if (c.tt)   grid.appendChild(create('a', { class:'btn btn-white', href:c.tt, target:'_blank', rel:'noopener' }, [ icon('tiktok'), 'TikTok' ]));
     if (grid.childNodes.length) card.appendChild(grid);
     if (!c.tel && !grid.childNodes.length) card.appendChild(create('a', { class:'btn btn-lg btn-block', href:'#/contact' }, [ icon('phone'), 'ช่องทางติดต่อ' ]));
 
